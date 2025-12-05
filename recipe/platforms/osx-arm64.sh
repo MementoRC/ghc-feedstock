@@ -142,9 +142,14 @@ platform_post_configure_ghc() {
   # macOS-specific: Set system-ar to llvm-ar for stage0
   perl -pi -e "s#(system-ar\\s*?=\\s).*#\$1${AR_STAGE0}#" "${settings_file}"
 
-  # macOS-specific: Set stage0 compiler flags for host targeting
+  # macOS-specific: Set stage0 compiler/linker flags for BUILD machine (x86_64)
+  # CRITICAL: Stage0 runs on the BUILD machine, so it needs BUILD_PREFIX libraries
+  # not PREFIX libraries (which are arm64). This fixes:
+  #   ld: warning: ignoring file $PREFIX/lib/libffi.dylib, building for macOS-x86_64
+  #   but attempting to link with file built for macOS-arm64
   perl -pi -e "s#(conf-cc-args-stage0\\s*?=\\s).*#\$1--target=${conda_host}#" "${settings_file}"
-  perl -pi -e "s#(conf-gcc-linker-args-stage0\\s*?=\\s).*#\$1--target=${conda_host}#" "${settings_file}"
+  perl -pi -e "s#(conf-gcc-linker-args-stage0\\s*?=\\s).*#\$1--target=${conda_host} -Wl,-L${BUILD_PREFIX}/lib -Wl,-rpath,${BUILD_PREFIX}/lib#" "${settings_file}"
+  perl -pi -e "s#(conf-ld-linker-args-stage0\\s*?=\\s).*#\$1-L${BUILD_PREFIX}/lib -rpath ${BUILD_PREFIX}/lib#" "${settings_file}"
 
   # macOS-specific: Override ar command in settings
   perl -pi -e "s#(settings-ar-command\\s*?=\\s).*#\$1${conda_target}-ar#" "${settings_file}"
@@ -157,14 +162,20 @@ platform_post_configure_ghc() {
 
   # macOS-specific: Patch bootstrap settings
   echo "  Patching bootstrap settings..."
-  local bootstrap_settings="${BUILD_PREFIX}/ghc-bootstrap/lib/ghc-${PKG_VERSION}/lib/settings"
-  if [[ -f "${bootstrap_settings}" ]]; then
+  # Find bootstrap settings dynamically - PKG_VERSION is 9.6.7 but bootstrap is 9.2.8
+  local bootstrap_settings
+  bootstrap_settings=$(find "${BUILD_PREFIX}/ghc-bootstrap/lib" -name settings -type f 2>/dev/null | head -1)
+  if [[ -n "${bootstrap_settings}" ]] && [[ -f "${bootstrap_settings}" ]]; then
+    echo "  Found bootstrap settings: ${bootstrap_settings}"
     # Remove problematic libiconv2 reference
     perl -pi -e "s#[^ ]+/usr/lib/libiconv2.tbd##" "${bootstrap_settings}"
     # Add -fno-lto to compiler flags
     perl -pi -e "s#(C compiler flags\", \")#\$1-v -fno-lto #" "${bootstrap_settings}"
     perl -pi -e 's#(C\+\+ compiler flags", "[^"]*)#$1 -fno-lto#' "${bootstrap_settings}"
-    perl -pi -e "s#(C compiler link flags\", \"[^\"]*)#\$1 -fno-lto#" "${bootstrap_settings}"
+    # CRITICAL: Add BUILD_PREFIX library paths for stage0 linking (x86_64 libs)
+    # Stage0 runs on x86_64, so it needs x86_64 libffi/libiconv from BUILD_PREFIX
+    perl -pi -e "s#(C compiler link flags\", \"[^\"]*)#\$1 -fno-lto -Wl,-L${BUILD_PREFIX}/lib -Wl,-rpath,${BUILD_PREFIX}/lib#" "${bootstrap_settings}"
+    perl -pi -e "s#(ld flags\", \"[^\"]*)#\$1 -L${BUILD_PREFIX}/lib -rpath ${BUILD_PREFIX}/lib#" "${bootstrap_settings}"
     # Fix ar and ranlib commands
     perl -pi -e "s#(ar command\", \")[^\"]*#\$1${AR_STAGE0}#" "${bootstrap_settings}"
     perl -pi -e "s#(ranlib command\", \")[^\"]*#\$1llvm-ranlib#" "${bootstrap_settings}"
