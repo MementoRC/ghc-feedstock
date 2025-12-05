@@ -216,6 +216,13 @@ patch_system_config_linker_flags() {
   perl -pi -e "s#(settings-c-compiler-link-flags.*?= )#\$1-Wl,-L${prefix}/lib -Wl,-rpath,${prefix}/lib #" "${settings_file}"
   perl -pi -e "s#(settings-ld-flags.*?= )#\$1-L${prefix}/lib -rpath ${prefix}/lib #" "${settings_file}"
 
+  # Add xelatex placeholder - Hadrian validates this even with --docs=none
+  # Without this, build fails with: "Non optional builder 'xelatex' is not specified"
+  if ! grep -q "^xelatex" "${settings_file}"; then
+    echo "xelatex = /bin/true" >> "${settings_file}"
+    echo "  Added xelatex placeholder to system.config"
+  fi
+
   echo "  ✓ system.config linker flags patched"
 }
 
@@ -582,6 +589,27 @@ call_hook() {
   local hook_name="platform_$1"
   if type -t "${hook_name}" >/dev/null 2>&1; then
     "${hook_name}"
+  fi
+}
+
+# ==============================================================================
+# Post-Install Helpers
+# ==============================================================================
+
+# Install bash completion script
+# Should be called from platform_post_install or default_post_install
+#
+# Usage:
+#   install_bash_completion
+#
+install_bash_completion() {
+  echo "  Installing bash completion..."
+  mkdir -p "${PREFIX}/etc/bash_completion.d"
+  if [[ -f "${SRC_DIR}/utils/completion/ghc.bash" ]]; then
+    cp "${SRC_DIR}/utils/completion/ghc.bash" "${PREFIX}/etc/bash_completion.d/ghc"
+    echo "  ✓ Bash completion installed"
+  else
+    echo "  WARNING: ghc.bash completion file not found at ${SRC_DIR}/utils/completion/ghc.bash"
   fi
 }
 

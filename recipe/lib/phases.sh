@@ -458,6 +458,9 @@ default_post_install() {
     exit 1
   }
 
+  # Install bash completion (uses helper from helpers.sh)
+  install_bash_completion
+
   echo "  GHC installed successfully"
 }
 

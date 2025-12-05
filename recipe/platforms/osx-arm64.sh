@@ -347,6 +347,7 @@ create_symlinks() {
 
 platform_post_install() {
   create_symlinks
+  install_bash_completion
 
   # Verify installation
   echo "  Verifying GHC installation..."

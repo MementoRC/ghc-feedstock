@@ -336,4 +336,5 @@ platform_install_ghc() {
 platform_post_install() {
   patch_final_settings
   create_symlinks
+  install_bash_completion
 }
