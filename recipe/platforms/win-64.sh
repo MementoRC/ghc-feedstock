@@ -367,6 +367,15 @@ platform_build_stage2() {
   run_and_log "stage2-hsc2hs" "${HADRIAN_CMD[@]}" --flavour="${HADRIAN_FLAVOUR}" stage2:exe:hsc2hs --freeze1 --docs=none --progress-info=none
 
   # Build Stage 2 GHC libraries with live output
+  # CRITICAL: Add Stage1 bin to PATH so cabal-configure can find ghc
+  # Without this, RTS configuration fails: "The program 'ghc' version >=7.0.1 is required"
+  local stage1_bin="${_SRC_DIR}/_build/stage1/bin"
+  if [[ -d "${stage1_bin}" ]]; then
+    export PATH="${stage1_bin}:${PATH}"
+    echo "  Added Stage1 bin to PATH: ${stage1_bin}"
+    echo "  Stage1 ghc: $(ls -la "${stage1_bin}"/ghc* 2>/dev/null | head -3 || echo 'not found')"
+  fi
+
   echo "  Command: ${HADRIAN_CMD[*]} stage2:lib:ghc --flavour=${HADRIAN_FLAVOUR} --freeze1 --docs=none --progress-info=none"
 
   run_and_log "stage2-lib" "${HADRIAN_CMD[@]}" stage2:lib:ghc --flavour="${HADRIAN_FLAVOUR}" --freeze1 --docs=none --progress-info=none || {

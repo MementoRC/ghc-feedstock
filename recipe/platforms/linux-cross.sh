@@ -267,13 +267,22 @@ fix_wrapper_scripts() {
   # GHC wrapper scripts may have "./" prefix in exeprog variable
   # This causes paths like: $libdir/bin/./target-ghci-9.6.7
   # Fix by removing the "./" prefix
+  #
+  # GHC installs TWO sets of wrapper scripts:
+  # 1. Target-prefixed: $PREFIX/bin/${ghc_target}-ghci
+  # 2. Short-name: $PREFIX/bin/ghci
+  # Both may have the bug and both need fixing
   pushd "${PREFIX}/bin" >/dev/null
 
   for wrapper in ghc ghci ghc-pkg runghc runhaskell haddock hp2ps hsc2hs hpc; do
+    # Fix target-prefixed wrapper
     local target_wrapper="${ghc_target}-${wrapper}"
     if [[ -f "${target_wrapper}" ]]; then
-      # Remove "./" prefix from exeprog if present
       perl -pi -e 's#^(exeprog=")\./#$1#' "${target_wrapper}"
+    fi
+    # Fix short-name wrapper (may be script or symlink - only fix if script)
+    if [[ -f "${wrapper}" ]] && [[ ! -L "${wrapper}" ]]; then
+      perl -pi -e 's#^(exeprog=")\./#$1#' "${wrapper}"
     fi
   done
 

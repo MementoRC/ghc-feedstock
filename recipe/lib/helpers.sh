@@ -223,19 +223,27 @@ patch_system_config_linker_flags() {
   # Add xelatex placeholder - Hadrian validates this even with --docs=none
   # Without this, build fails with: "Non optional builder 'xelatex' is not specified"
   # Note: system.config.in has "xelatex = @XELATEX@" which becomes "xelatex = " if not found
-  # So we need to check for empty value, not just presence of the line
-  if grep -q "^xelatex[[:space:]]*=$" "${settings_file}" || ! grep -q "^xelatex" "${settings_file}"; then
-    # Replace empty xelatex line or add new one
-    perl -pi -e 's#^xelatex\s*=\s*$#xelatex = /bin/true#' "${settings_file}"
-    if ! grep -q "^xelatex" "${settings_file}"; then
+  # We need to detect and replace empty values or add the line if missing
+  #
+  # IMPORTANT: The line might be "xelatex = " (with trailing space) or "xelatex =" or similar
+  # Check if value is empty/whitespace by looking for a non-whitespace char after =
+  if ! grep -qE "^xelatex\s*=\s*\S" "${settings_file}"; then
+    # Either line is missing, or has empty/whitespace value - replace or add
+    # First try to replace any existing empty line
+    perl -pi -e 's#^(xelatex\s*=\s*).*$#xelatex = /bin/true#' "${settings_file}"
+    # If line still doesn't exist with a value, add it
+    if ! grep -qE "^xelatex\s*=\s*\S" "${settings_file}"; then
       echo "xelatex = /bin/true" >> "${settings_file}"
     fi
     echo "  Added xelatex placeholder to system.config"
   fi
 
   # Add sphinx-build placeholder - same issue as xelatex
-  if ! grep -q "^sphinx-build" "${settings_file}"; then
-    echo "sphinx-build = /bin/true" >> "${settings_file}"
+  if ! grep -qE "^sphinx-build\s*=\s*\S" "${settings_file}"; then
+    perl -pi -e 's#^(sphinx-build\s*=\s*).*$#sphinx-build = /bin/true#' "${settings_file}"
+    if ! grep -qE "^sphinx-build\s*=\s*\S" "${settings_file}"; then
+      echo "sphinx-build = /bin/true" >> "${settings_file}"
+    fi
     echo "  Added sphinx-build placeholder to system.config"
   fi
 
