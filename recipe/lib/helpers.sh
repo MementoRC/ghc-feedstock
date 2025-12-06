@@ -206,6 +206,10 @@ patch_system_config_linker_flags() {
 
   echo "  Patching system.config with library paths..."
 
+  # Add -Wno-deprecated-non-prototype to suppress old-style C prototype warnings
+  # Required for hp2ps utility which has: extern void* malloc();
+  perl -pi -e "s#(conf-cc-args-stage[012].*?= )#\$1-Wno-deprecated-non-prototype #" "${settings_file}"
+
   # Add library paths and rpath to GCC linker flags (stage 1 and 2)
   perl -pi -e "s#(conf-gcc-linker-args-stage[12].*?= )#\$1-Wl,-L${prefix}/lib -Wl,-rpath,${prefix}/lib #" "${settings_file}"
 
@@ -218,9 +222,21 @@ patch_system_config_linker_flags() {
 
   # Add xelatex placeholder - Hadrian validates this even with --docs=none
   # Without this, build fails with: "Non optional builder 'xelatex' is not specified"
-  if ! grep -q "^xelatex" "${settings_file}"; then
-    echo "xelatex = /bin/true" >> "${settings_file}"
+  # Note: system.config.in has "xelatex = @XELATEX@" which becomes "xelatex = " if not found
+  # So we need to check for empty value, not just presence of the line
+  if grep -q "^xelatex[[:space:]]*=$" "${settings_file}" || ! grep -q "^xelatex" "${settings_file}"; then
+    # Replace empty xelatex line or add new one
+    perl -pi -e 's#^xelatex\s*=\s*$#xelatex = /bin/true#' "${settings_file}"
+    if ! grep -q "^xelatex" "${settings_file}"; then
+      echo "xelatex = /bin/true" >> "${settings_file}"
+    fi
     echo "  Added xelatex placeholder to system.config"
+  fi
+
+  # Add sphinx-build placeholder - same issue as xelatex
+  if ! grep -q "^sphinx-build" "${settings_file}"; then
+    echo "sphinx-build = /bin/true" >> "${settings_file}"
+    echo "  Added sphinx-build placeholder to system.config"
   fi
 
   echo "  ✓ system.config linker flags patched"

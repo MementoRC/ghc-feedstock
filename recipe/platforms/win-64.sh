@@ -238,7 +238,7 @@ platform_build_hadrian() {
   fi
 
   HADRIAN_CMD=("${hadrian_bin}" "-j${CPU_COUNT}" "--directory" "${_SRC_DIR}")
-  HADRIAN_FLAVOUR="quickest"
+  HADRIAN_FLAVOUR="release"
 
   echo "  Hadrian binary: ${hadrian_bin}"
 }

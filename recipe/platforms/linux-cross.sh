@@ -261,6 +261,26 @@ patch_final_settings() {
   echo "  ✓ Final settings patched"
 }
 
+fix_wrapper_scripts() {
+  echo "  Fixing wrapper scripts..."
+
+  # GHC wrapper scripts may have "./" prefix in exeprog variable
+  # This causes paths like: $libdir/bin/./target-ghci-9.6.7
+  # Fix by removing the "./" prefix
+  pushd "${PREFIX}/bin" >/dev/null
+
+  for wrapper in ghc ghci ghc-pkg runghc runhaskell haddock hp2ps hsc2hs hpc; do
+    local target_wrapper="${ghc_target}-${wrapper}"
+    if [[ -f "${target_wrapper}" ]]; then
+      # Remove "./" prefix from exeprog if present
+      perl -pi -e 's#^(exeprog=")\./#$1#' "${target_wrapper}"
+    fi
+  done
+
+  popd >/dev/null
+  echo "  ✓ Wrapper scripts fixed"
+}
+
 create_symlinks() {
   echo "  Creating symlinks for cross-compiled tools..."
 
@@ -314,8 +334,9 @@ platform_install_ghc() {
 
   # Configure the binary distribution
   # Must use BUILD machine compiler (x86_64) with clean flags - not target compiler
-  CC="${BUILD_PREFIX}/bin/${conda_host}-clang" \
-  CXX="${BUILD_PREFIX}/bin/${conda_host}-clang++" \
+  # Use ac_cv_path_* to properly cache paths for wrapper script generation
+  ac_cv_path_CC="${BUILD_PREFIX}/bin/${conda_host}-clang" \
+  ac_cv_path_CXX="${BUILD_PREFIX}/bin/${conda_host}-clang++" \
   CFLAGS="" \
   CXXFLAGS="" \
   LDFLAGS="" \
@@ -335,6 +356,7 @@ platform_install_ghc() {
 
 platform_post_install() {
   patch_final_settings
+  fix_wrapper_scripts
   create_symlinks
   install_bash_completion
 }
