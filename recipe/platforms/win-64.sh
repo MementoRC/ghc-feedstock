@@ -298,18 +298,13 @@ platform_build_stage1() {
 platform_post_build_stage1() {
   echo "  Running Windows-specific Stage1 post-build..."
 
-  # NOTE: Do NOT patch stage0 settings with link flags here!
-  # The bootstrap GHC must use NORMAL MinGW linking for stage2:exe:ghc-bin.
-  # Custom link flags are ONLY applied to stage1/lib/settings AFTER
-  # stage2:exe:ghc-bin completes (see patch_stage2_settings).
+  # NOTE: Stage1 ghc.exe is NOT created until stage2:exe:ghc-bin runs!
+  # - stage1:exe:ghc-bin creates _build/stage0/bin/ghc.exe
+  # - stage2:exe:ghc-bin creates _build/stage1/bin/ghc.exe
+  # So we can't test Stage1 ghc.exe here - it doesn't exist yet.
+  # The test and touchy rebuild are done AFTER stage2:exe:ghc-bin in platform_build_stage2.
 
-  # Test Stage1 GHC
-  test_stage1_ghc
-
-  # Rebuild touchy.exe with correct flags
-  rebuild_touchy_with_correct_linker_flags
-
-  echo "  ✓ Windows Stage1 post-build complete"
+  echo "  ✓ Windows Stage1 post-build complete (Stage1 ghc.exe test deferred to Stage2)"
 }
 
 # ==============================================================================
@@ -357,10 +352,15 @@ platform_build_stage2() {
   # normal MinGW linking. Custom link flags are only for Stage1 settings.
 
   # CRITICAL: Build stage2:exe:ghc-bin FIRST to generate _build/stage1/lib/settings
+  # This creates _build/stage1/bin/ghc.exe (NOT stage1:exe:ghc-bin which creates stage0!)
   run_and_log "stage2-exe" "${HADRIAN_CMD[@]}" stage2:exe:ghc-bin --flavour="${HADRIAN_FLAVOUR}" --freeze1 --docs=none --progress-info=none
 
   # Patch Stage1 settings file (created by stage2:exe:ghc-bin)
   patch_stage2_settings
+
+  # NOW test Stage1 ghc.exe and rebuild touchy.exe (after stage2:exe:ghc-bin created them)
+  test_stage1_ghc
+  rebuild_touchy_with_correct_linker_flags
 
   # Build Stage 1 supporting tools
   run_and_log "stage2-pkg" "${HADRIAN_CMD[@]}" --flavour="${HADRIAN_FLAVOUR}" stage2:exe:ghc-pkg --freeze1 --docs=none --progress-info=none
