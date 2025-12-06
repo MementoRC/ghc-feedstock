@@ -142,11 +142,23 @@ platform_post_configure_ghc() {
   # macOS-specific: Set system-ar to llvm-ar for stage0
   perl -pi -e "s#(system-ar\\s*?=\\s).*#\$1${AR_STAGE0}#" "${settings_file}"
 
-  # macOS-specific: Set stage0 compiler/linker flags for BUILD machine (x86_64)
-  # CRITICAL: Stage0 runs on the BUILD machine, so it needs BUILD_PREFIX libraries
-  # not PREFIX libraries (which are arm64). This fixes:
+  # CRITICAL FIX: Clear ffi-lib-dir and iconv-lib-dir for cross-compilation
+  # Problem: Hadrian's Settings/Packages.hs adds cabalExtraDirs for ghci and rts
+  # packages using ffi-lib-dir. This adds -L$PREFIX/lib to ALL stages including
+  # Stage0. For cross-compilation, $PREFIX/lib contains arm64 libraries, but
+  # Stage0 needs x86_64 libraries. The linker finds arm64 libs first and fails:
   #   ld: warning: ignoring file $PREFIX/lib/libffi.dylib, building for macOS-x86_64
   #   but attempting to link with file built for macOS-arm64
+  #   Undefined symbols: _ffi_call, _locale_charset
+  #
+  # Solution: Clear these settings so Hadrian doesn't add -L$PREFIX/lib.
+  # Stage0 will use system/SDK libraries (/Library/Developer/.../usr/lib).
+  # Stage1+ gets library paths from conf-gcc-linker-args-stage1/2.
+  echo "  Clearing ffi/iconv lib dirs to prevent arm64 libs in Stage0..."
+  perl -pi -e 's#^(ffi-lib-dir\s*=).*#$1#' "${settings_file}"
+  perl -pi -e 's#^(iconv-lib-dir\s*=).*#$1#' "${settings_file}"
+
+  # macOS-specific: Set stage0 compiler/linker flags for BUILD machine (x86_64)
   perl -pi -e "s#(conf-cc-args-stage0\\s*?=\\s).*#\$1--target=${conda_host}#" "${settings_file}"
   perl -pi -e "s#(conf-gcc-linker-args-stage0\\s*?=\\s).*#\$1--target=${conda_host} -Wl,-L${BUILD_PREFIX}/lib -Wl,-rpath,${BUILD_PREFIX}/lib#" "${settings_file}"
   perl -pi -e "s#(conf-ld-linker-args-stage0\\s*?=\\s).*#\$1-L${BUILD_PREFIX}/lib -rpath ${BUILD_PREFIX}/lib#" "${settings_file}"
