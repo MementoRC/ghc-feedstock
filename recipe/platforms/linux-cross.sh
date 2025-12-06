@@ -264,9 +264,11 @@ patch_final_settings() {
 fix_wrapper_scripts() {
   echo "  Fixing wrapper scripts..."
 
-  # GHC wrapper scripts may have "./" prefix in exeprog variable
-  # This causes paths like: $libdir/bin/./target-ghci-9.6.7
-  # Fix by removing the "./" prefix
+  # GHC bindist Makefile uses 'find . ! -type d' to list wrapper files,
+  # which outputs './ghci' instead of 'ghci'. This "./" gets embedded in:
+  #   exeprog="./ghci"
+  #   executablename="/path/to/lib/bin/./ghci"
+  # causing paths like: $libdir/bin/./target-ghci-9.6.7
   #
   # GHC installs TWO sets of wrapper scripts:
   # 1. Target-prefixed: $PREFIX/bin/${ghc_target}-ghci
@@ -278,11 +280,14 @@ fix_wrapper_scripts() {
     # Fix target-prefixed wrapper
     local target_wrapper="${ghc_target}-${wrapper}"
     if [[ -f "${target_wrapper}" ]]; then
+      # Fix both exeprog and executablename - both can have "./" prefix from find
       perl -pi -e 's#^(exeprog=")\./#$1#' "${target_wrapper}"
+      perl -pi -e 's#(/bin/)\./#$1#' "${target_wrapper}"  # Fix executablename path
     fi
     # Fix short-name wrapper (may be script or symlink - only fix if script)
     if [[ -f "${wrapper}" ]] && [[ ! -L "${wrapper}" ]]; then
       perl -pi -e 's#^(exeprog=")\./#$1#' "${wrapper}"
+      perl -pi -e 's#(/bin/)\./#$1#' "${wrapper}"  # Fix executablename path
     fi
   done
 
