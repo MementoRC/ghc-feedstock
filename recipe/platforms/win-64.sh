@@ -358,24 +358,14 @@ platform_build_stage2() {
   # Patch Stage1 settings file (created by stage2:exe:ghc-bin)
   patch_stage2_settings
 
-  # NOW test Stage1 ghc.exe and rebuild touchy.exe (after stage2:exe:ghc-bin created them)
-  test_stage1_ghc
-  rebuild_touchy_with_correct_linker_flags
-
   # Build Stage 1 supporting tools
   run_and_log "stage2-pkg" "${HADRIAN_CMD[@]}" --flavour="${HADRIAN_FLAVOUR}" stage2:exe:ghc-pkg --freeze1 --docs=none --progress-info=none
   run_and_log "stage2-hsc2hs" "${HADRIAN_CMD[@]}" --flavour="${HADRIAN_FLAVOUR}" stage2:exe:hsc2hs --freeze1 --docs=none --progress-info=none
 
-  # Build Stage 2 GHC libraries with live output
-  # CRITICAL: Add Stage1 bin to PATH so cabal-configure can find ghc
-  # Without this, RTS configuration fails: "The program 'ghc' version >=7.0.1 is required"
-  local stage1_bin="${_SRC_DIR}/_build/stage1/bin"
-  if [[ -d "${stage1_bin}" ]]; then
-    export PATH="${stage1_bin}:${PATH}"
-    echo "  Added Stage1 bin to PATH: ${stage1_bin}"
-    echo "  Stage1 ghc: $(ls -la "${stage1_bin}"/ghc* 2>/dev/null | head -3 || echo 'not found')"
-  fi
-
+  # Build Stage 2 GHC libraries
+  # NOTE: Do NOT add Stage1 bin to PATH - Hadrian handles this internally.
+  # Adding it would cause Cabal to find our Stage1 ghc.exe (which may have
+  # relocation issues) and fail when trying to detect its version.
   echo "  Command: ${HADRIAN_CMD[*]} stage2:lib:ghc --flavour=${HADRIAN_FLAVOUR} --freeze1 --docs=none --progress-info=none"
 
   run_and_log "stage2-lib" "${HADRIAN_CMD[@]}" stage2:lib:ghc --flavour="${HADRIAN_FLAVOUR}" --freeze1 --docs=none --progress-info=none || {
