@@ -252,8 +252,10 @@ patch_final_settings() {
   perl -pi -e "s#(C compiler link flags\", \"[^\"]*)#\$1 -Wl,-L\\\$topdir/../../../lib -Wl,-rpath,\\\$topdir/../../../lib#" "${settings_file}"
   perl -pi -e "s#(ld flags\", \"[^\"]*)#\$1 -L\\\$topdir/../../../lib -rpath \\\$topdir/../../../lib#" "${settings_file}"
 
-  # Fix tool paths to use target prefix
-  perl -pi -e "s#\"[/\w]*?(ar|clang|clang\+\+|ld|ranlib|llc|opt)\"#\"${conda_target}-\$1\"#" "${settings_file}"
+  # Fix tool paths to use target prefix (strip absolute BUILD_PREFIX paths)
+  # Pattern: Match full quoted path, capture the target prefix (e.g., aarch64-conda-linux-gnu-)
+  # and tool name, then replace with just prefix+tool (no absolute path)
+  perl -pi -e "s#\"[^\"]*/([^/]*-)(ar|as|clang|clang\+\+|ld|nm|objdump|ranlib|llc|opt)\"#\"\$1\$2\"#g" "${settings_file}"
 
   echo "  Final settings file:"
   cat "${settings_file}"
