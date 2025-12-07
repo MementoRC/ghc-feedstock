@@ -247,6 +247,15 @@ patch_system_config_linker_flags() {
     echo "  Added sphinx-build placeholder to system.config"
   fi
 
+  # Add makeindex placeholder - same issue as xelatex/sphinx-build
+  if ! grep -qE "^makeindex\s*=\s*\S" "${settings_file}"; then
+    sed -i 's/^makeindex[[:space:]]*=.*/makeindex = \/bin\/true/' "${settings_file}"
+    if ! grep -qE "^makeindex\s*=\s*\S" "${settings_file}"; then
+      echo "makeindex = /bin/true" >> "${settings_file}"
+    fi
+    echo "  Added makeindex placeholder to system.config"
+  fi
+
   echo "  ✓ system.config linker flags patched"
 }
 
