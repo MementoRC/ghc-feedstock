@@ -365,6 +365,12 @@ platform_build_stage2() {
   run_and_log "stage2-pkg" "${HADRIAN_CMD[@]}" --flavour="${HADRIAN_FLAVOUR}" stage2:exe:ghc-pkg --freeze1 --docs=none --progress-info=none
   run_and_log "stage2-hsc2hs" "${HADRIAN_CMD[@]}" --flavour="${HADRIAN_FLAVOUR}" stage2:exe:hsc2hs --freeze1 --docs=none --progress-info=none
 
+  # CRITICAL: Rebuild touchy.exe with correct linker flags BEFORE stage2:lib:ghc
+  # touchy.exe was built during stage1:exe:ghc-bin with Stage0 settings (no --enable-auto-import)
+  # Stage1 ghc.exe (in _build/stage1/bin/) needs touchy.exe (in _build/stage1/lib/bin/)
+  # to work correctly when compiling Stage2 libraries.
+  rebuild_touchy_with_correct_linker_flags
+
   # Build Stage 2 GHC libraries
   # NOTE: Do NOT add Stage1 bin to PATH - Hadrian handles this internally.
   # Adding it would cause Cabal to find our Stage1 ghc.exe (which may have
