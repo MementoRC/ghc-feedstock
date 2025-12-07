@@ -227,10 +227,10 @@ patch_system_config_linker_flags() {
   #
   # IMPORTANT: The line might be "xelatex = " (with trailing space) or "xelatex =" or similar
   # Check if value is empty/whitespace by looking for a non-whitespace char after =
+  # NOTE: Using sed instead of perl because perl's $ anchor can miss \r in CRLF files
   if ! grep -qE "^xelatex\s*=\s*\S" "${settings_file}"; then
-    # Either line is missing, or has empty/whitespace value - replace or add
-    # First try to replace any existing empty line
-    perl -pi -e 's#^(xelatex\s*=\s*).*$#xelatex = /bin/true#' "${settings_file}"
+    # Replace the line completely (sed handles line endings correctly)
+    sed -i 's/^xelatex[[:space:]]*=.*/xelatex = \/bin\/true/' "${settings_file}"
     # If line still doesn't exist with a value, add it
     if ! grep -qE "^xelatex\s*=\s*\S" "${settings_file}"; then
       echo "xelatex = /bin/true" >> "${settings_file}"
@@ -240,7 +240,7 @@ patch_system_config_linker_flags() {
 
   # Add sphinx-build placeholder - same issue as xelatex
   if ! grep -qE "^sphinx-build\s*=\s*\S" "${settings_file}"; then
-    perl -pi -e 's#^(sphinx-build\s*=\s*).*$#sphinx-build = /bin/true#' "${settings_file}"
+    sed -i 's/^sphinx-build[[:space:]]*=.*/sphinx-build = \/bin\/true/' "${settings_file}"
     if ! grep -qE "^sphinx-build\s*=\s*\S" "${settings_file}"; then
       echo "sphinx-build = /bin/true" >> "${settings_file}"
     fi
