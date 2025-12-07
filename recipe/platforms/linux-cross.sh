@@ -298,13 +298,25 @@ fix_wrapper_scripts() {
 create_symlinks() {
   echo "  Creating symlinks for cross-compiled tools..."
 
-  # Create links: ${ghc_target}-ghc -> ghc, etc.
   pushd "${PREFIX}/bin" >/dev/null
 
-  for bin in ghc ghci ghc-pkg hp2ps hsc2hs; do
-    if [[ -f "${ghc_target}-${bin}" ]] && [[ ! -f "${bin}" ]]; then
-      ln -sf "${ghc_target}-${bin}" "${bin}"
-      echo "    ${ghc_target}-${bin} -> ${bin}"
+  # GHC bindist installs versioned wrappers like:
+  #   powerpc64le-unknown-linux-gnu-ghci-9.6.7
+  # But the ghci symlink points to:
+  #   powerpc64le-unknown-linux-gnu-ghci (without version)
+  # Create the missing intermediate symlinks:
+  for bin in ghc ghci ghc-pkg hp2ps hsc2hs haddock hpc runghc; do
+    local versioned="${ghc_target}-${bin}-${PKG_VERSION}"
+    local unversioned="${ghc_target}-${bin}"
+    # Create unversioned -> versioned symlink if needed
+    if [[ -f "${versioned}" ]] && [[ ! -e "${unversioned}" ]]; then
+      ln -sf "${versioned}" "${unversioned}"
+      echo "    ${versioned} -> ${unversioned}"
+    fi
+    # Create short name -> unversioned symlink if needed
+    if [[ -e "${unversioned}" ]] && [[ ! -e "${bin}" ]]; then
+      ln -sf "${unversioned}" "${bin}"
+      echo "    ${unversioned} -> ${bin}"
     fi
   done
 
