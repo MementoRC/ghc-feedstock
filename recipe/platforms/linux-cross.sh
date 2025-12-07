@@ -380,9 +380,41 @@ platform_install_ghc() {
   echo "  ✓ Installation complete"
 }
 
+fix_ghci_wrapper() {
+  echo "  Fixing ghci wrapper to call ghc --interactive..."
+
+  # For cross-compiled GHC, ghci is NOT a separate binary - it's just ghc --interactive.
+  # The bindist install creates a broken wrapper pointing to a non-existent ghci binary.
+  # Replace it with a simple script that calls ghc --interactive.
+
+  local ghci_wrapper="${PREFIX}/bin/${ghc_target}-ghci"
+  if [[ -f "${ghci_wrapper}" ]]; then
+    cat > "${ghci_wrapper}" << 'GHCI_EOF'
+#!/bin/sh
+exec "${0%ghci}ghc" --interactive ${1+"$@"}
+GHCI_EOF
+    chmod +x "${ghci_wrapper}"
+    echo "    Fixed ${ghc_target}-ghci"
+  fi
+
+  # Also fix the short-name ghci if it's a script (not symlink)
+  local short_ghci="${PREFIX}/bin/ghci"
+  if [[ -f "${short_ghci}" ]] && [[ ! -L "${short_ghci}" ]]; then
+    cat > "${short_ghci}" << 'GHCI_EOF'
+#!/bin/sh
+exec "${0%ghci}ghc" --interactive ${1+"$@"}
+GHCI_EOF
+    chmod +x "${short_ghci}"
+    echo "    Fixed ghci"
+  fi
+
+  echo "  ✓ ghci wrapper fixed"
+}
+
 platform_post_install() {
   patch_final_settings
   fix_wrapper_scripts
+  fix_ghci_wrapper
   create_symlinks
   install_bash_completion
 }

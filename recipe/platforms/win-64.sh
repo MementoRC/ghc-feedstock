@@ -238,7 +238,10 @@ platform_build_hadrian() {
   fi
 
   HADRIAN_CMD=("${hadrian_bin}" "-j${CPU_COUNT}" "--directory" "${_SRC_DIR}")
-  HADRIAN_FLAVOUR="release"
+  # CRITICAL: Use quickest flavour on Windows to avoid "32 bit pseudo relocation"
+  # errors in the Stage1 ghc.exe. Release flavour produces optimized binaries
+  # that can exceed relocation limits and crash when Cabal tries to detect version.
+  HADRIAN_FLAVOUR="quickest"
 
   echo "  Hadrian binary: ${hadrian_bin}"
 }
