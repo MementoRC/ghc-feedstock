@@ -84,6 +84,9 @@ platform_setup_environment() {
   # Create chkstk_ms stub library
   create_chkstk_stub
 
+  # Create mingw32 compatibility stubs (timezone symbols for UCRT)
+  create_mingw32_stubs
+
   # Install windres wrapper
   if [[ -f "${_RECIPE_DIR}/support/windres.bat" ]]; then
     cp "${_RECIPE_DIR}/support/windres.bat" "${_BUILD_PREFIX}/Library/bin/"
@@ -92,6 +95,11 @@ platform_setup_environment() {
 
   # Patch bootstrap settings
   patch_bootstrap_settings
+
+  # CRITICAL: Patch bootstrap's time package to link against mingw32_stubs
+  # The time library references __imp__timezone and __imp__tzname which are
+  # MSVCRT symbols not available in UCRT. Our stubs provide these.
+  patch_bootstrap_time_package
 
   # Set up temp variables
   export TMP="$(cygpath -w "${TEMP}")"
@@ -198,6 +206,17 @@ platform_pre_configure_ghc() {
   export SIZE="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-size.exe"
   export STRINGS="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-strings.exe"
   export STRIP="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-strip.exe"
+
+  # CRITICAL: Tell autoconf which compiler to use (prevents "checking for gcc... no")
+  export ac_cv_prog_CC="${CC}"
+  export ac_cv_prog_CXX="${CXX}"
+  export ac_cv_prog_CPP="${CPP}"
+  export ac_cv_prog_AR="${AR}"
+  export ac_cv_prog_LD="${LD}"
+  export ac_cv_prog_NM="${NM}"
+  export ac_cv_prog_RANLIB="${RANLIB}"
+  export ac_cv_prog_STRIP="${STRIP}"
+  export ac_cv_prog_OBJDUMP="${OBJDUMP}"
 
   echo "  Toolchain environment variables overridden with actual paths"
 
@@ -515,6 +534,69 @@ EOF
   echo "  ✓ Created ${CHKSTK_LIB}"
 }
 
+create_mingw32_stubs() {
+  echo "  Creating MinGW32 compatibility stub library (timezone symbols)..."
+
+  local STUBS_OBJ="${_SRC_DIR}/mingw32_stubs.o"
+  local STUBS_LIB="${_BUILD_PREFIX}/Library/lib/libmingw32_stubs.a"
+
+  # Compile stubs from recipe support directory
+  if [[ -f "${_RECIPE_DIR}/support/mingw32_stubs.c" ]]; then
+    ${CC} -c "${_RECIPE_DIR}/support/mingw32_stubs.c" -o "${STUBS_OBJ}"
+  else
+    echo "ERROR: mingw32_stubs.c not found at ${_RECIPE_DIR}/support/mingw32_stubs.c"
+    exit 1
+  fi
+
+  ${AR} rcs "${STUBS_LIB}" "${STUBS_OBJ}"
+
+  if [[ ! -f "${STUBS_LIB}" ]]; then
+    echo "ERROR: Failed to create mingw32_stubs library"
+    exit 1
+  fi
+
+  echo "  ✓ Created ${STUBS_LIB}"
+}
+
+patch_bootstrap_time_package() {
+  echo "  Patching bootstrap GHC's time package to use mingw32_stubs..."
+
+  local pkg_db="${_BUILD_PREFIX}/ghc-bootstrap/lib/package.conf.d"
+  local time_conf
+  time_conf=$(find "${pkg_db}" -name "time-*.conf" 2>/dev/null | head -1)
+
+  if [[ -z "${time_conf}" || ! -f "${time_conf}" ]]; then
+    echo "WARNING: Bootstrap time package conf not found in ${pkg_db}"
+    return 1
+  fi
+
+  echo "  Found time package: ${time_conf}"
+
+  # Use Windows-format path for the stubs library directory
+  local STUBS_LIB_DIR="${_BUILD_PREFIX}/Library/lib"
+
+  # Add extra-lib-dirs if not present
+  if ! grep -q "extra-lib-dirs:" "${time_conf}"; then
+    echo "extra-lib-dirs: ${STUBS_LIB_DIR}" >> "${time_conf}"
+  else
+    # Append to existing extra-lib-dirs
+    perl -pi -e "s#(extra-lib-dirs:.*)#\$1 ${STUBS_LIB_DIR}#" "${time_conf}"
+  fi
+
+  # Add extra-libraries if not present
+  if ! grep -q "extra-libraries:" "${time_conf}"; then
+    echo "extra-libraries: mingw32_stubs" >> "${time_conf}"
+  else
+    # Append to existing extra-libraries
+    perl -pi -e "s#(extra-libraries:.*)#\$1 mingw32_stubs#" "${time_conf}"
+  fi
+
+  echo "  Recaching bootstrap package database..."
+  "${_BUILD_PREFIX}/ghc-bootstrap/bin/ghc-pkg" recache
+
+  echo "  ✓ Bootstrap time package patched"
+}
+
 patch_bootstrap_settings() {
   echo "  Patching bootstrap GHC settings..."
 
@@ -525,21 +607,25 @@ patch_bootstrap_settings() {
     return 1
   fi
 
-  # CRITICAL: Build paths directly from _BUILD_PREFIX, not from ${LD} variable
-  # Conda sets LD=%BUILD_PREFIX%/... so we can't use it - must use _BUILD_PREFIX
-  local LD_WIN=$(echo "${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-ld.exe" | sed 's#^/c/#C:/#')
-  local AR_WIN=$(echo "${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-ar.exe" | sed 's#^/c/#C:/#')
-  local RANLIB_WIN=$(echo "${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-ranlib.exe" | sed 's#^/c/#C:/#')
+  # CRITICAL: Use _BUILD_PREFIX_ (C:/bld/... format) for all tool paths
+  # GHC on Windows cannot execute paths like /c/bld/... - needs C:/bld/...
+  local CC_WIN="${_BUILD_PREFIX_}/Library/bin/x86_64-w64-mingw32-gcc.exe"
+  local CXX_WIN="${_BUILD_PREFIX_}/Library/bin/x86_64-w64-mingw32-g++.exe"
+  local LD_WIN="${_BUILD_PREFIX_}/Library/bin/x86_64-w64-mingw32-ld.exe"
+  local AR_WIN="${_BUILD_PREFIX_}/Library/bin/x86_64-w64-mingw32-ar.exe"
+  local RANLIB_WIN="${_BUILD_PREFIX_}/Library/bin/x86_64-w64-mingw32-ranlib.exe"
 
-  echo "  Patching with actual paths (from _BUILD_PREFIX):"
+  echo "  Patching with Windows-format paths (_BUILD_PREFIX_):"
+  echo "    CC_WIN=${CC_WIN}"
+  echo "    CXX_WIN=${CXX_WIN}"
   echo "    LD_WIN=${LD_WIN}"
   echo "    AR_WIN=${AR_WIN}"
   echo "    RANLIB_WIN=${RANLIB_WIN}"
 
-  # Patch settings file
-  perl -pi -e "s#(C compiler command\", \")[^\"]*#\$1${CC}#" "${settings_file}"
-  perl -pi -e "s#(Haskell CPP command\", \")[^\"]*#\$1${CC}#" "${settings_file}"
-  perl -pi -e "s#(C\+\+ compiler command\", \")[^\"]*#\$1${CXX}#" "${settings_file}"
+  # Patch settings file with Windows-format paths
+  perl -pi -e "s#(C compiler command\", \")[^\"]*#\$1${CC_WIN}#" "${settings_file}"
+  perl -pi -e "s#(Haskell CPP command\", \")[^\"]*#\$1${CC_WIN}#" "${settings_file}"
+  perl -pi -e "s#(C\+\+ compiler command\", \")[^\"]*#\$1${CXX_WIN}#" "${settings_file}"
   # CRITICAL: Fix "ld command" field that points to non-existent $tooldir/mingw/bin/ld.exe
   perl -pi -e "s#(ld command\", \")[^\"]*#\$1${LD_WIN}#" "${settings_file}"
   perl -pi -e "s#(Merge objects command\", \")[^\"]*#\$1${LD_WIN}#" "${settings_file}"
@@ -547,23 +633,33 @@ patch_bootstrap_settings() {
   perl -pi -e "s#(ranlib command\", \")[^\"]*#\$1${RANLIB_WIN}#" "${settings_file}"
   perl -pi -e "s#(dllwrap command\", \")[^\"]*#\$1false#" "${settings_file}"
 
-  # Setup windres wrapper (using _BUILD_PREFIX, not conda variable)
+  # Setup windres wrapper (using _BUILD_PREFIX_, Windows format)
   if [[ -f "${_BUILD_PREFIX}/Library/bin/windres.bat" ]]; then
-    local WINDRES_WIN=$(echo "${_BUILD_PREFIX}/Library/bin/windres.bat" | sed 's#^/c/#C:/#')
+    local WINDRES_WIN="${_BUILD_PREFIX_}/Library/bin/windres.bat"
     perl -pi -e "s#(windres command\", \")[^\"]*#\$1${WINDRES_WIN}#" "${settings_file}"
   fi
 
-  # Update include paths
+  # Update include paths - use _BUILD_PREFIX_ and _PREFIX_ (Windows format)
   # Replace bootstrap's mingw/include with conda include paths
-  perl -pi -e "s#-I\\\$tooldir/mingw/include#-I${_BUILD_PREFIX}/Library/include#g" "${settings_file}"
+  perl -pi -e "s#-I\\\$tooldir/mingw/include#-I${_BUILD_PREFIX_}/Library/include#g" "${settings_file}"
 
   # Add CFLAGS and basic include path to compiler flags
   # Note: More include paths will be added later in patch_stage0_settings_include_paths()
-  perl -pi -e "s#(C compiler flags\", \")([^\"]*)#\$1\$2 ${CFLAGS} -I${_PREFIX}/Library/include#" "${settings_file}"
-  perl -pi -e "s#(C\+\+ compiler flags\", \")([^\"]*)#\$1\$2 ${CXXFLAGS} -I${_PREFIX}/Library/include#" "${settings_file}"
+  perl -pi -e "s#(C compiler flags\", \")([^\"]*)#\$1\$2 ${CFLAGS} -I${_PREFIX_}/Library/include#" "${settings_file}"
+  perl -pi -e "s#(C\+\+ compiler flags\", \")([^\"]*)#\$1\$2 ${CXXFLAGS} -I${_PREFIX_}/Library/include#" "${settings_file}"
 
   # Haskell CPP needs traditional-cpp for Haskell compatibility
-  perl -pi -e "s#(Haskell CPP flags\", \")[^\"]*#\$1-E -undef -traditional-cpp -I${_BUILD_PREFIX}/Library/include -I${_PREFIX}/Library/include#" "${settings_file}"
+  perl -pi -e "s#(Haskell CPP flags\", \")[^\"]*#\$1-E -undef -traditional-cpp -I${_BUILD_PREFIX_}/Library/include -I${_PREFIX_}/Library/include#" "${settings_file}"
+
+  # CRITICAL: Add mingw32_stubs library to link flags for bootstrap GHC
+  # The bootstrap GHC's time library references __imp__timezone and __imp__tzname
+  # which are MSVCRT symbols not available in modern UCRT. Our stubs library provides these.
+  # This is needed when bootstrap GHC links Stage0 executables (including Hadrian-built tools)
+  # Without this, executables segfault during RTS initialization when accessing timezone.
+  local STUBS_LIB_DIR="${_BUILD_PREFIX_}/Library/lib"
+  perl -pi -e "s#(C compiler link flags\", \")([^\"]*)#\$1\$2 -L${STUBS_LIB_DIR} -lmingw32_stubs#" "${settings_file}"
+  perl -pi -e "s#(ld flags\", \")([^\"]*)#\$1\$2 -L${STUBS_LIB_DIR} -lmingw32_stubs#" "${settings_file}"
+  echo "  Added mingw32_stubs to bootstrap GHC link flags"
 
   # Show complete bootstrap settings file for debugging
   echo "  ===== BOOTSTRAP SETTINGS FILE (after patching) ====="
