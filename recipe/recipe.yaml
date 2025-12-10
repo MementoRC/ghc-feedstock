@@ -110,6 +110,9 @@ tests:
             - hpc
             - runghc
             - runhaskell
+        - if: not unix
+          then:
+            - ghc_windres.bat
       files:
         - etc/conda/activate.d/ghc_activate.${{ "sh" if unix else "bat" }}
         - if: unix
@@ -148,6 +151,14 @@ tests:
           - hpc help
           - runghc --version
           - runhaskell --version
+      - if: not unix
+        then:
+          # Verify GHC can resolve and invoke windres via $topdir path in settings
+          - ghc --print-libdir
+          - ghc --info | findstr windres
+          # Test that GHC can actually invoke windres (compiles empty resource file)
+          - echo // empty resource > test.rc
+          - ghc -v -c test.rc -o test_res.o
 
   - script:
       - ghc --version

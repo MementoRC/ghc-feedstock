@@ -415,6 +415,9 @@ platform_install_ghc() {
   # Windows binary distributions are relocatable - just copy the contents
   cp -r "${bindist_dir}"/* "${_PREFIX}"/
 
+  # Copy windres wrapper for installed package
+  cp "${_BUILD_PREFIX}/Library/bin/windres.bat" "${_PREFIX}/bin/ghc_windres.bat"
+
   echo "  ✓ Installation completed"
 
   # Post-install: Replace bundled mingw and update settings
@@ -674,6 +677,7 @@ post_install_cleanup() {
 
     # Fix: Change \$2 to $2 for proper backreference
     perl -pi -e 's#((?:C compiler|C\+\+ compiler|Haskell CPP|ld|Merge objects|ar|ranlib) command",\s*")[^"]*-(gcc|g\+\+|ld|ar|ranlib)(?:.exe)?#$1x86_64-w64-mingw32-$2.exe#' "${settings_file}"
+    perl -pi -e 's#(windres command",\s*")[^"]*#$1\$topdir/../../bin/ghc_windres.bat#' "${settings_file}"
     perl -pi -e 's#(compiler link flags",\s*"[^"]*)#$1 -Wl,-L\$topdir/../../lib#' "${settings_file}"
     perl -pi -e 's#(ld flags",\s*"[^"]*)#$1 -L\$topdir/../../lib#' "${settings_file}"
 
