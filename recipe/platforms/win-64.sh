@@ -156,14 +156,17 @@ platform_pre_configure_ghc() {
   export UseSystemFfi=YES
   export ac_cv_use_system_libffi=yes
 
-  export ac_cv_prog_LD="${_BUILD_PREFIX_}"/Library/bin/"${LD}"
+  export ac_cv_prog_LD="${LD}"
   
-  export ac_cv_path_CC="${_BUILD_PREFIX_}"/Library/bin/"${CC}"
-  export ac_cv_path_CXX="${_BUILD_PREFIX_}"/Library/bin/"${CXX}"
-  export ac_cv_path_AR="${_BUILD_PREFIX_}"/Library/bin/"${AR}"
-  export ac_cv_path_LD="${_BUILD_PREFIX_}"/Library/bin/"${LD}"
-  export ac_cv_path_NM="${_BUILD_PREFIX_}"/Library/bin/"${NM}"
-  export ac_cv_path_RANLIB="${_BUILD_PREFIX_}"/Library/bin/"${RANLIB}"
+  export ac_cv_path_CC="${CC}"
+  export ac_cv_path_CXX="${CXX}"
+  export ac_cv_path_AR="${AR}"
+  export ac_cv_path_DLLWRAP="${DLLWRAP}"
+  export ac_cv_path_LD="${LD}"
+  export ac_cv_path_NM="${NM}"
+  export ac_cv_path_OBJDUMP="${OBJDUMP}"
+  export ac_cv_path_RANLIB="${RANLIB}"
+  export ac_cv_path_WINDRES="${WINDRES}"
   
   export CXX_STD_LIB_LIBS="stdc++"
 
@@ -253,17 +256,17 @@ patch_stage0_settings_include_paths() {
     return 1
   fi
 
-  perl -pi -e "s#(C compiler command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${CC}#" "${settings_file}"
-  perl -pi -e "s#(Haskell CPP command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${CC}#" "${settings_file}"
-  perl -pi -e "s#(C\+\+ compiler command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${CXX}#" "${settings_file}"
-  perl -pi -e "s#(ld command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${LD}#" "${settings_file}"
-  perl -pi -e "s#(Merge objects command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${LD}#" "${settings_file}"
-  perl -pi -e "s#(ar command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${AR}#" "${settings_file}"
-  perl -pi -e "s#(nm command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${NM}#" "${settings_file}"
-  perl -pi -e "s#(ranlib command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${RANLIB}#" "${settings_file}"
-  perl -pi -e "s#(objdump command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${OBJDUMP}#" "${settings_file}"
-  perl -pi -e "s#(strip command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${STRIP}#" "${settings_file}"
-  perl -pi -e "s#(dllwrap command\", \")[^\"]*#\$1false#" "${settings_file}"
+  perl -pi -e "s#(C compiler command\", \")[^\"]*#\$1${CC}#" "${settings_file}"
+  perl -pi -e "s#(Haskell CPP command\", \")[^\"]*#\$1${CC}#" "${settings_file}"
+  perl -pi -e "s#(C\+\+ compiler command\", \")[^\"]*#\$1${CXX}#" "${settings_file}"
+  perl -pi -e "s#(ld command\", \")[^\"]*#\$1${LD}#" "${settings_file}"
+  perl -pi -e "s#(Merge objects command\", \")[^\"]*#\$1${LD}#" "${settings_file}"
+  perl -pi -e "s#(ar command\", \")[^\"]*#\$1${AR}#" "${settings_file}"
+  perl -pi -e "s#(nm command\", \")[^\"]*#\$1${NM}#" "${settings_file}"
+  perl -pi -e "s#(ranlib command\", \")[^\"]*#\$1${RANLIB}#" "${settings_file}"
+  perl -pi -e "s#(objdump command\", \")[^\"]*#\$1${OBJDUMP}#" "${settings_file}"
+  perl -pi -e "s#(strip command\", \")[^\"]*#\$1${STRIP}#" "${settings_file}"
+  perl -pi -e "s#(dllwrap command\", \")[^\"]*#\$1${DLLWRAP}#" "${settings_file}"
 
   # Setup windres wrapper (using _BUILD_PREFIX, not conda variable)
   if [[ -f "${_BUILD_PREFIX}/Library/bin/windres.bat" ]]; then
@@ -339,17 +342,17 @@ patch_stage2_settings() {
   local LINK_FLAGS="-Wl,--subsystem,console -Wl,--enable-auto-import -Wl,--image-base=0x140000000 -Wl,--dynamicbase -Wl,--high-entropy-va -Xlinker -L${CHKSTK_DIR} -Xlinker -L${MINGW_SYSROOT}"
   LINK_FLAGS="${LINK_FLAGS} -Xlinker -lmoldname -Xlinker -lmingwex -Xlinker -lmingw32 -Xlinker -lchkstk_ms -Xlinker -lgcc -Xlinker -lucrt -Xlinker -lkernel32 -Xlinker -ladvapi32"
 
-  perl -pi -e "s#(C compiler command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${CC}#" "${settings_file}"
-  perl -pi -e "s#(Haskell CPP command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${CC}#" "${settings_file}"
-  perl -pi -e "s#(C\+\+ compiler command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${CXX}#" "${settings_file}"
-  perl -pi -e "s#(ld command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${LD}#" "${settings_file}"
-  perl -pi -e "s#(Merge objects command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${LD}#" "${settings_file}"
-  perl -pi -e "s#(ar command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${AR}#" "${settings_file}"
-  perl -pi -e "s#(nm command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${NM}#" "${settings_file}"
-  perl -pi -e "s#(ranlib command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${RANLIB}#" "${settings_file}"
-  perl -pi -e "s#(objdump command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${OBJDUMP}#" "${settings_file}"
-  perl -pi -e "s#(strip command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${STRIP}#" "${settings_file}"
-  perl -pi -e "s#(dllwrap command\", \")[^\"]*#\$1false#" "${settings_file}"
+  perl -pi -e "s#(C compiler command\", \")[^\"]*#\$1${CC}#" "${settings_file}"
+  perl -pi -e "s#(Haskell CPP command\", \")[^\"]*#\$1${CC}#" "${settings_file}"
+  perl -pi -e "s#(C\+\+ compiler command\", \")[^\"]*#\$1${CXX}#" "${settings_file}"
+  perl -pi -e "s#(ld command\", \")[^\"]*#\$1${LD}#" "${settings_file}"
+  perl -pi -e "s#(Merge objects command\", \")[^\"]*#\$1${LD}#" "${settings_file}"
+  perl -pi -e "s#(ar command\", \")[^\"]*#\$1${AR}#" "${settings_file}"
+  perl -pi -e "s#(nm command\", \")[^\"]*#\$1${NM}#" "${settings_file}"
+  perl -pi -e "s#(ranlib command\", \")[^\"]*#\$1${RANLIB}#" "${settings_file}"
+  perl -pi -e "s#(objdump command\", \")[^\"]*#\$1${OBJDUMP}#" "${settings_file}"
+  perl -pi -e "s#(strip command\", \")[^\"]*#\$1${STRIP}#" "${settings_file}"
+  perl -pi -e "s#(dllwrap command\", \")[^\"]*#\$1${DLLWRAP}#" "${settings_file}"
   if [[ -f "${_BUILD_PREFIX}/Library/bin/windres.bat" ]]; then
     perl -pi -e "s#(windres command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/windres.bat#" "${settings_file}"
   fi
@@ -551,17 +554,17 @@ patch_bootstrap_settings() {
   fi
 
   # Patch settings file - use PATH-based names for compilers (simpler, works reliably)
-  perl -pi -e "s#(C compiler command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${CC}#" "${settings_file}"
-  perl -pi -e "s#(Haskell CPP command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${CC}#" "${settings_file}"
-  perl -pi -e "s#(C\+\+ compiler command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${CXX}#" "${settings_file}"
-  perl -pi -e "s#(ld command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${LD}#" "${settings_file}"
-  perl -pi -e "s#(Merge objects command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${LD}#" "${settings_file}"
-  perl -pi -e "s#(ar command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${AR}#" "${settings_file}"
-  perl -pi -e "s#(nm command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${NM}#" "${settings_file}"
-  perl -pi -e "s#(ranlib command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${RANLIB}#" "${settings_file}"
-  perl -pi -e "s#(objdump command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${OBJDUMP}#" "${settings_file}"
-  perl -pi -e "s#(strip command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${STRIP}#" "${settings_file}"
-  perl -pi -e "s#(windres command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/windres.bat#" "${settings_file}"
+  perl -pi -e "s#(C compiler command\", \")[^\"]*#\$1${CC}#" "${settings_file}"
+  perl -pi -e "s#(Haskell CPP command\", \")[^\"]*#\$1${CC}#" "${settings_file}"
+  perl -pi -e "s#(C\+\+ compiler command\", \")[^\"]*#\$1${CXX}#" "${settings_file}"
+  perl -pi -e "s#(ld command\", \")[^\"]*#\$1${LD}#" "${settings_file}"
+  perl -pi -e "s#(Merge objects command\", \")[^\"]*#\$1${LD}#" "${settings_file}"
+  perl -pi -e "s#(ar command\", \")[^\"]*#\$1${AR}#" "${settings_file}"
+  perl -pi -e "s#(nm command\", \")[^\"]*#\$1${NM}#" "${settings_file}"
+  perl -pi -e "s#(ranlib command\", \")[^\"]*#\$1${RANLIB}#" "${settings_file}"
+  perl -pi -e "s#(objdump command\", \")[^\"]*#\$1${OBJDUMP}#" "${settings_file}"
+  perl -pi -e "s#(strip command\", \")[^\"]*#\$1${STRIP}#" "${settings_file}"
+  perl -pi -e "s#(dllwrap command\", \")[^\"]*#\$1${DLLWRAP}#" "${settings_file}"
   perl -pi -e "s#(dllwrap command\", \")[^\"]*#\$1false#" "${settings_file}"
 
   # Setup windres wrapper
