@@ -67,8 +67,8 @@ platform_setup_environment() {
     echo "  Installed windres.bat wrapper"
   fi
 
-  # Patch bootstrap settings
-  patch_bootstrap_settings
+  # Patch bootstrap settings (tool paths, CFLAGS, dllwrap=false, etc.)
+  patch_windows_settings "${_BUILD_PREFIX}/ghc-bootstrap/lib/settings" --bootstrap --debug
 
   # Set up temp variables
   export TMP="$(cygpath -w "${TEMP}")"
@@ -85,18 +85,8 @@ platform_setup_environment() {
 # Phase 2: Bootstrap Setup
 # ==============================================================================
 
-platform_setup_bootstrap() {
-  echo "  Configuring Windows bootstrap..."
-
-  # Test bootstrap GHC is functional
-  echo "  Testing bootstrap GHC..."
-  "${GHC}" --version >/dev/null || {
-    echo "ERROR: Bootstrap GHC failed to run"
-    exit 1
-  }
-
-  echo "  ✓ Bootstrap GHC is functional"
-}
+# NOTE: platform_setup_bootstrap() removed - phases.sh already verifies bootstrap
+# GHC after calling common_setup_environment() and any platform overrides.
 
 # ==============================================================================
 # Phase 3: Cabal Setup
@@ -126,22 +116,8 @@ platform_setup_cabal() {
 # Phase 4: Configure GHC
 # ==============================================================================
 
-platform_add_configure_args() {
-  local -n args=$1
-
-  # Add Windows-specific configure arguments
-  args+=(
-    --with-system-libffi=yes
-    --with-curses-includes="${_PREFIX}/Library/include"
-    --with-curses-libraries="${_PREFIX}/Library/lib"
-    --with-ffi-includes="${_PREFIX}/Library/include"
-    --with-ffi-libraries="${_PREFIX}/Library/lib"
-    --with-gmp-includes="${_PREFIX}/Library/include"
-    --with-gmp-libraries="${_PREFIX}/Library/lib"
-    --with-iconv-includes="${_PREFIX}/Library/include"
-    --with-iconv-libraries="${_PREFIX}/Library/lib"
-  )
-}
+# NOTE: platform_add_configure_args removed - build_configure_args in helpers.sh
+# now handles Windows paths automatically (${_PREFIX}/Library/{include,lib})
 
 platform_pre_configure_ghc() {
   # Configure environment variables for Windows
@@ -170,35 +146,6 @@ platform_pre_configure_ghc() {
   
   export CXX_STD_LIB_LIBS="stdc++"
 
-  # CRITICAL: Override ALL conda toolchain variables that have %BUILD_PREFIX% placeholders
-  # Configure reads these from environment, NOT from bootstrap GHC settings
-  # export ADDR2LINE="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-addr2line.exe"
-  # export AR="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-ar.exe"
-  # export AS="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-as.exe"
-  # export CXXFILT="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-c++filt.exe"
-  # export ELFEDIT="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-elfedit.exe"
-  # export GPROF="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-gprof.exe"
-  # export LD="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-ld.exe"
-  # export NM="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-nm.exe"
-  # export OBJCOPY="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-objcopy.exe"
-  # export OBJDUMP="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-objdump.exe"
-  # export RANLIB="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-ranlib.exe"
-  # export READELF="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-readelf.exe"
-  # export SIZE="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-size.exe"
-  # export STRINGS="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-strings.exe"
-  # export STRIP="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-strip.exe"
-
-  # CRITICAL: Tell autoconf which compiler to use (prevents "checking for gcc... no")
-  # export ac_cv_prog_CC="${CC}"
-  # export ac_cv_prog_CXX="${CXX}"
-  # export ac_cv_prog_CPP="${CPP}"
-  # export ac_cv_prog_AR="${AR}"
-  # export ac_cv_prog_LD="${LD}"
-  # export ac_cv_prog_NM="${NM}"
-  # export ac_cv_prog_RANLIB="${RANLIB}"
-  # export ac_cv_prog_STRIP="${STRIP}"
-  # export ac_cv_prog_OBJDUMP="${OBJDUMP}"
-
   echo "  Toolchain environment variables overridden with actual paths"
 
   # Set up Windows SDK paths
@@ -219,17 +166,13 @@ platform_post_configure_ghc() {
 # ==============================================================================
 
 platform_build_hadrian() {
-  echo "  Building Hadrian (Windows-specific, single-threaded)..."
+  echo "  Building Hadrian (Windows)..."
 
   pushd "${_SRC_DIR}/hadrian" >/dev/null
-
-  # Build Hadrian with single-threaded build to avoid race conditions
-  # Parallel ghc-pkg updates can conflict on package.cache
   run_and_log "build-hadrian" "${CABAL}" v2-build -j${CPU_COUNT} hadrian
-
   popd >/dev/null
 
-  # Find Hadrian binary
+  # Find Hadrian binary (Windows uses .exe extension)
   local hadrian_bin=$(find "${_SRC_DIR}"/hadrian/dist-newstyle -name hadrian.exe -type f | head -1)
 
   if [[ ! -f "${hadrian_bin}" ]]; then
@@ -237,6 +180,7 @@ platform_build_hadrian() {
     exit 1
   fi
 
+  # Set up Hadrian command array (uses Windows path format _SRC_DIR)
   HADRIAN_CMD=("${hadrian_bin}" "-j${CPU_COUNT}" "--directory" "${_SRC_DIR}")
 
   echo "  Hadrian binary: ${hadrian_bin}"
@@ -246,47 +190,6 @@ platform_build_hadrian() {
 # Phase 6: Build Stage 1
 # ==============================================================================
 
-patch_stage0_settings_include_paths() {
-  echo "  Patching Stage0 settings with include paths for ffi.h, gmp.h, etc..."
-
-  local settings_file="${_SRC_DIR}/_build/stage0/lib/settings"
-
-  if [[ ! -f "${settings_file}" ]]; then
-    echo "WARNING: Stage0 settings file not found at ${settings_file}"
-    return 1
-  fi
-
-  perl -pi -e "s#(C compiler command\", \")[^\"]*#\$1${CC}#" "${settings_file}"
-  perl -pi -e "s#(Haskell CPP command\", \")[^\"]*#\$1${CC}#" "${settings_file}"
-  perl -pi -e "s#(C\+\+ compiler command\", \")[^\"]*#\$1${CXX}#" "${settings_file}"
-  perl -pi -e "s#(ld command\", \")[^\"]*#\$1${LD}#" "${settings_file}"
-  perl -pi -e "s#(Merge objects command\", \")[^\"]*#\$1${LD}#" "${settings_file}"
-  perl -pi -e "s#(ar command\", \")[^\"]*#\$1${AR}#" "${settings_file}"
-  perl -pi -e "s#(nm command\", \")[^\"]*#\$1${NM}#" "${settings_file}"
-  perl -pi -e "s#(ranlib command\", \")[^\"]*#\$1${RANLIB}#" "${settings_file}"
-  perl -pi -e "s#(objdump command\", \")[^\"]*#\$1${OBJDUMP}#" "${settings_file}"
-  perl -pi -e "s#(strip command\", \")[^\"]*#\$1${STRIP}#" "${settings_file}"
-  perl -pi -e "s#(dllwrap command\", \")[^\"]*#\$1${DLLWRAP}#" "${settings_file}"
-
-  # Setup windres wrapper (using _BUILD_PREFIX, not conda variable)
-  if [[ -f "${_BUILD_PREFIX}/Library/bin/windres.bat" ]]; then
-    perl -pi -e "s#(windres command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/windres.bat#" "${settings_file}"
-  fi
-
-  perl -pi -e "s#(C compiler flags\", \")([^\"]*)(\")#\$1\$2 -I${_PREFIX}/Library/include -I${_BUILD_PREFIX}/Library/include\$3#" "${settings_file}"
-  perl -pi -e "s#(C\+\+ compiler flags\", \")([^\"]*)(\")#\$1\$2 -I${_PREFIX}/Library/include -I${_BUILD_PREFIX}/Library/include\$3#" "${settings_file}"
-
-  # IMPORTANT: DO NOT patch stage0/bootstrap GHC link flags with custom CRT!
-  # The bootstrap GHC must use NORMAL MinGW linking so that intermediate
-  # Haskell programs (including hadrian) work correctly.
-  # Custom link flags are ONLY needed for the FINAL Stage1 GHC settings.
-
-  echo "  Stage0 settings after patching:"
-  grep "C compiler flags\|C++ compiler flags" "${settings_file}" || echo "  (grep failed)"
-
-  echo "  ✓ Stage0 settings include paths added"
-}
-
 platform_build_stage1() {
   echo "  Building Stage 1 GHC (Windows)..."
 
@@ -295,7 +198,8 @@ platform_build_stage1() {
 
   # CRITICAL: After stage1:exe:ghc-bin creates _build/stage0/lib/settings,
   # patch it with include paths BEFORE building libraries that need ffi.h
-  patch_stage0_settings_include_paths
+  # NOTE: Do NOT add link flags here - Stage0 must use normal MinGW linking.
+  patch_windows_settings "${_SRC_DIR}/_build/stage0/lib/settings" --include-paths
 
   # Build Stage 1 supporting tools
   run_and_log "stage1-pkg" "${HADRIAN_CMD[@]}" --flavour="${FLAVOUR}" stage1:exe:ghc-pkg
@@ -323,46 +227,6 @@ platform_post_build_stage1() {
 # Phase 7: Build Stage 2
 # ==============================================================================
 
-patch_stage2_settings() {
-  echo "  Patching Stage2 settings (_build/stage1/lib/settings)..."
-
-  local settings_file="${_SRC_DIR}/_build/stage1/lib/settings"
-
-  if [[ ! -f "${settings_file}" ]]; then
-    echo "WARNING: Stage2 settings file not found at ${settings_file}"
-    return 1
-  fi
-
-  # Directories for linking
-  local CHKSTK_DIR="${_BUILD_PREFIX}/Library/lib"
-  local MINGW_SYSROOT="${_BUILD_PREFIX}/Library/x86_64-w64-mingw32/sysroot/usr/lib"
-
-  # Build complete link flags string
-  # CRITICAL: Use -Xlinker prefix because flags go through GHC to linker
-  local LINK_FLAGS="-Wl,--subsystem,console -Wl,--enable-auto-import -Wl,--image-base=0x140000000 -Wl,--dynamicbase -Wl,--high-entropy-va -Xlinker -L${CHKSTK_DIR} -Xlinker -L${MINGW_SYSROOT}"
-  LINK_FLAGS="${LINK_FLAGS} -Xlinker -lmoldname -Xlinker -lmingwex -Xlinker -lmingw32 -Xlinker -lchkstk_ms -Xlinker -lgcc -Xlinker -lucrt -Xlinker -lkernel32 -Xlinker -ladvapi32"
-
-  perl -pi -e "s#(C compiler command\", \")[^\"]*#\$1${CC}#" "${settings_file}"
-  perl -pi -e "s#(Haskell CPP command\", \")[^\"]*#\$1${CC}#" "${settings_file}"
-  perl -pi -e "s#(C\+\+ compiler command\", \")[^\"]*#\$1${CXX}#" "${settings_file}"
-  perl -pi -e "s#(ld command\", \")[^\"]*#\$1${LD}#" "${settings_file}"
-  perl -pi -e "s#(Merge objects command\", \")[^\"]*#\$1${LD}#" "${settings_file}"
-  perl -pi -e "s#(ar command\", \")[^\"]*#\$1${AR}#" "${settings_file}"
-  perl -pi -e "s#(nm command\", \")[^\"]*#\$1${NM}#" "${settings_file}"
-  perl -pi -e "s#(ranlib command\", \")[^\"]*#\$1${RANLIB}#" "${settings_file}"
-  perl -pi -e "s#(objdump command\", \")[^\"]*#\$1${OBJDUMP}#" "${settings_file}"
-  perl -pi -e "s#(strip command\", \")[^\"]*#\$1${STRIP}#" "${settings_file}"
-  perl -pi -e "s#(dllwrap command\", \")[^\"]*#\$1${DLLWRAP}#" "${settings_file}"
-  if [[ -f "${_BUILD_PREFIX}/Library/bin/windres.bat" ]]; then
-    perl -pi -e "s#(windres command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/windres.bat#" "${settings_file}"
-  fi
-
-  perl -pi -e "s#(C compiler link flags\", \")#\$1${LINK_FLAGS} #" "${settings_file}"
-  perl -pi -e "s#(ld flags\", \")#\$1--subsystem,console --enable-auto-import --image-base=0x140000000 --dynamicbase --high-entropy-va -L${CHKSTK_DIR} -L${MINGW_SYSROOT} -lmoldname -lmingwex -lmingw32 -lchkstk_ms -lgcc -lucrt -lkernel32 -ladvapi32 #" "${settings_file}"
-
-  echo "  ✓ Stage2 settings patched"
-}
-
 platform_pre_build_stage2() {
   echo "  Running Windows-specific Stage2 pre-build..."
 
@@ -382,8 +246,9 @@ platform_build_stage2() {
   # This creates _build/stage1/bin/ghc.exe (NOT stage1:exe:ghc-bin which creates stage0!)
   run_and_log "stage2-exe" "${HADRIAN_CMD[@]}" stage2:exe:ghc-bin --flavour="${FLAVOUR}" --freeze1 --docs=none --progress-info=none
 
-  # Patch Stage1 settings file (created by stage2:exe:ghc-bin)
-  patch_stage2_settings
+  # Patch Stage1 settings (used by Stage2 build) with tool paths AND link flags.
+  # Link flags are added here because Stage2 produces the final GHC binary.
+  patch_windows_settings "${_SRC_DIR}/_build/stage1/lib/settings" --link-flags
 
   # Build Stage 1 supporting tools
   run_and_log "stage2-pkg" "${HADRIAN_CMD[@]}" --flavour="${FLAVOUR}" stage2:exe:ghc-pkg --freeze1 --docs=none --progress-info=none
@@ -468,6 +333,118 @@ platform_post_install() {
 # Helper Functions
 # ==============================================================================
 
+# ------------------------------------------------------------------------------
+# Unified GHC Settings Patching
+# ------------------------------------------------------------------------------
+# Patches GHC settings files with conda toolchain paths and flags.
+#
+# Usage:
+#   patch_windows_settings <settings_file> [options...]
+#
+# Options:
+#   --include-paths    Add include paths for ffi.h, gmp.h, etc.
+#   --link-flags       Add Windows-specific linker flags (for final binary)
+#   --bootstrap        Apply bootstrap-specific patches (dllwrap=false, CFLAGS, etc.)
+#   --debug            Show settings file after patching
+# ------------------------------------------------------------------------------
+
+patch_windows_settings() {
+  local settings_file="$1"
+  shift
+
+  # Parse options
+  local add_include_paths=false
+  local add_link_flags=false
+  local is_bootstrap=false
+  local debug_output=false
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --include-paths) add_include_paths=true ;;
+      --link-flags) add_link_flags=true ;;
+      --bootstrap) is_bootstrap=true ;;
+      --debug) debug_output=true ;;
+      *) echo "WARNING: Unknown option: $1" ;;
+    esac
+    shift
+  done
+
+  if [[ ! -f "${settings_file}" ]]; then
+    echo "WARNING: Settings file not found at ${settings_file}"
+    return 1
+  fi
+
+  echo "  Patching: ${settings_file}"
+
+  # --- Tool path patching (common to all) ---
+  perl -pi -e "s#(C compiler command\", \")[^\"]*#\$1${CC}#" "${settings_file}"
+  perl -pi -e "s#(Haskell CPP command\", \")[^\"]*#\$1${CC}#" "${settings_file}"
+  perl -pi -e "s#(C\+\+ compiler command\", \")[^\"]*#\$1${CXX}#" "${settings_file}"
+  perl -pi -e "s#(ld command\", \")[^\"]*#\$1${LD}#" "${settings_file}"
+  perl -pi -e "s#(Merge objects command\", \")[^\"]*#\$1${LD}#" "${settings_file}"
+  perl -pi -e "s#(ar command\", \")[^\"]*#\$1${AR}#" "${settings_file}"
+  perl -pi -e "s#(nm command\", \")[^\"]*#\$1${NM}#" "${settings_file}"
+  perl -pi -e "s#(ranlib command\", \")[^\"]*#\$1${RANLIB}#" "${settings_file}"
+  perl -pi -e "s#(objdump command\", \")[^\"]*#\$1${OBJDUMP}#" "${settings_file}"
+  perl -pi -e "s#(strip command\", \")[^\"]*#\$1${STRIP}#" "${settings_file}"
+  perl -pi -e "s#(dllwrap command\", \")[^\"]*#\$1${DLLWRAP}#" "${settings_file}"
+
+  # --- windres wrapper (common to all) ---
+  if [[ -f "${_BUILD_PREFIX}/Library/bin/windres.bat" ]]; then
+    perl -pi -e "s#(windres command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/windres.bat#" "${settings_file}"
+  else
+    echo "  WARNING: windres.bat not found at ${_BUILD_PREFIX}/Library/bin/windres.bat"
+    echo "  windres setting will NOT be patched - this may cause build failures!"
+  fi
+
+  # --- Bootstrap-specific patches ---
+  if [[ "${is_bootstrap}" == "true" ]]; then
+    # Disable dllwrap (not used, causes issues)
+    perl -pi -e "s#(dllwrap command\", \")[^\"]*#\$1false#" "${settings_file}"
+
+    # Replace bootstrap's mingw/include with conda include paths
+    perl -pi -e "s#-I\\\$tooldir/mingw/include#-I${_BUILD_PREFIX}/Library/include#g" "${settings_file}"
+
+    # Add CFLAGS to compiler flags
+    perl -pi -e "s#(C compiler flags\", \")([^\"]*)#\$1\$2 ${CFLAGS} -I${_PREFIX}/Library/include#" "${settings_file}"
+    perl -pi -e "s#(C\+\+ compiler flags\", \")([^\"]*)#\$1\$2 ${CXXFLAGS} -I${_PREFIX}/Library/include#" "${settings_file}"
+
+    # Haskell CPP needs traditional-cpp for Haskell compatibility
+    perl -pi -e "s#(Haskell CPP flags\", \")[^\"]*#\$1-E -undef -traditional-cpp -I${_BUILD_PREFIX}/Library/include -I${_PREFIX}/Library/include#" "${settings_file}"
+  fi
+
+  # --- Include paths for ffi.h, gmp.h, etc. (stage0, not stage2) ---
+  if [[ "${add_include_paths}" == "true" ]]; then
+    perl -pi -e "s#(C compiler flags\", \")([^\"]*)(\")#\$1\$2 -I${_PREFIX}/Library/include -I${_BUILD_PREFIX}/Library/include\$3#" "${settings_file}"
+    perl -pi -e "s#(C\+\+ compiler flags\", \")([^\"]*)(\")#\$1\$2 -I${_PREFIX}/Library/include -I${_BUILD_PREFIX}/Library/include\$3#" "${settings_file}"
+  fi
+
+  # --- Link flags for final binary (stage2 only) ---
+  # IMPORTANT: Do NOT add link flags to bootstrap or stage0 - they must use
+  # normal MinGW linking so intermediate Haskell programs work correctly.
+  if [[ "${add_link_flags}" == "true" ]]; then
+    local CHKSTK_DIR="${_BUILD_PREFIX}/Library/lib"
+    local MINGW_SYSROOT="${_BUILD_PREFIX}/Library/x86_64-w64-mingw32/sysroot/usr/lib"
+
+    # Build complete link flags string
+    # CRITICAL: Use -Xlinker prefix because flags go through GHC to linker
+    local LINK_FLAGS="-Wl,--subsystem,console -Wl,--enable-auto-import -Wl,--image-base=0x140000000 -Wl,--dynamicbase -Wl,--high-entropy-va -Xlinker -L${CHKSTK_DIR} -Xlinker -L${MINGW_SYSROOT}"
+    LINK_FLAGS="${LINK_FLAGS} -Xlinker -lmoldname -Xlinker -lmingwex -Xlinker -lmingw32 -Xlinker -lchkstk_ms -Xlinker -lgcc -Xlinker -lucrt -Xlinker -lkernel32 -Xlinker -ladvapi32"
+
+    perl -pi -e "s#(C compiler link flags\", \")#\$1${LINK_FLAGS} #" "${settings_file}"
+    perl -pi -e "s#(ld flags\", \")#\$1--subsystem,console --enable-auto-import --image-base=0x140000000 --dynamicbase --high-entropy-va -L${CHKSTK_DIR} -L${MINGW_SYSROOT} -lmoldname -lmingwex -lmingw32 -lchkstk_ms -lgcc -lucrt -lkernel32 -ladvapi32 #" "${settings_file}"
+  fi
+
+  # --- Debug output ---
+  if [[ "${debug_output}" == "true" ]]; then
+    echo "  ===== SETTINGS FILE (after patching) ====="
+    cat "${settings_file}"
+    echo "  ===== END SETTINGS ====="
+  fi
+
+  echo "  ✓ Settings patched"
+}
+
 expand_conda_variables() {
   # CRITICAL: Replace ALL conda variables with Unix paths to prevent backslash escape issues
   # When %PREFIX% expands to C:\bld\..., the \b becomes backspace character!
@@ -543,78 +520,11 @@ EOF
   echo "  ✓ Created ${CHKSTK_LIB}"
 }
 
-patch_bootstrap_settings() {
-  echo "  Patching bootstrap GHC settings..."
-
-  local settings_file="${_BUILD_PREFIX}/ghc-bootstrap/lib/settings"
-
-  if [[ ! -f "${settings_file}" ]]; then
-    echo "WARNING: Bootstrap settings file not found at ${settings_file}"
-    return 1
-  fi
-
-  # Patch settings file - use PATH-based names for compilers (simpler, works reliably)
-  perl -pi -e "s#(C compiler command\", \")[^\"]*#\$1${CC}#" "${settings_file}"
-  perl -pi -e "s#(Haskell CPP command\", \")[^\"]*#\$1${CC}#" "${settings_file}"
-  perl -pi -e "s#(C\+\+ compiler command\", \")[^\"]*#\$1${CXX}#" "${settings_file}"
-  perl -pi -e "s#(ld command\", \")[^\"]*#\$1${LD}#" "${settings_file}"
-  perl -pi -e "s#(Merge objects command\", \")[^\"]*#\$1${LD}#" "${settings_file}"
-  perl -pi -e "s#(ar command\", \")[^\"]*#\$1${AR}#" "${settings_file}"
-  perl -pi -e "s#(nm command\", \")[^\"]*#\$1${NM}#" "${settings_file}"
-  perl -pi -e "s#(ranlib command\", \")[^\"]*#\$1${RANLIB}#" "${settings_file}"
-  perl -pi -e "s#(objdump command\", \")[^\"]*#\$1${OBJDUMP}#" "${settings_file}"
-  perl -pi -e "s#(strip command\", \")[^\"]*#\$1${STRIP}#" "${settings_file}"
-  perl -pi -e "s#(dllwrap command\", \")[^\"]*#\$1${DLLWRAP}#" "${settings_file}"
-  perl -pi -e "s#(dllwrap command\", \")[^\"]*#\$1false#" "${settings_file}"
-
-  # Setup windres wrapper
-  if [[ -f "${_BUILD_PREFIX}/Library/bin/windres.bat" ]]; then
-    perl -pi -e "s#(windres command\", \")[^\"]*#\$1"${_BUILD_PREFIX_}"/Library/bin/windres.bat#" "${settings_file}"
-  fi
-
-  # Update include paths
-  # Replace bootstrap's mingw/include with conda include paths
-  perl -pi -e "s#-I\\\$tooldir/mingw/include#-I${_BUILD_PREFIX}/Library/include#g" "${settings_file}"
-
-  # Add CFLAGS and basic include path to compiler flags
-  # Note: More include paths will be added later in patch_stage0_settings_include_paths()
-  perl -pi -e "s#(C compiler flags\", \")([^\"]*)#\$1\$2 ${CFLAGS} -I${_PREFIX}/Library/include#" "${settings_file}"
-  perl -pi -e "s#(C\+\+ compiler flags\", \")([^\"]*)#\$1\$2 ${CXXFLAGS} -I${_PREFIX}/Library/include#" "${settings_file}"
-
-  # Haskell CPP needs traditional-cpp for Haskell compatibility
-  perl -pi -e "s#(Haskell CPP flags\", \")[^\"]*#\$1-E -undef -traditional-cpp -I${_BUILD_PREFIX}/Library/include -I${_PREFIX}/Library/include#" "${settings_file}"
-
-  # Show complete bootstrap settings file for debugging
-  echo "  ===== BOOTSTRAP SETTINGS FILE (after patching) ====="
-  cat "${settings_file}"
-  echo "  ===== END BOOTSTRAP SETTINGS ====="
-
-  echo "  ✓ Bootstrap settings patched"
-}
-
-# NOTE: patch_stage1_settings_for_relocation_fix was REMOVED.
-# It incorrectly patched stage0/lib/settings with link flags BEFORE stage2:exe:ghc-bin,
-# causing "multiple definition of main" errors with the new m2w64-sysroot CRT.
-#
-# The correct approach (matching working branch):
-# 1. Build stage1:exe:ghc-bin and stage2:exe:ghc-bin with DEFAULT MinGW linking
-# 2. AFTER stage2:exe:ghc-bin, patch stage1/lib/settings via patch_stage2_settings()
-# 3. Build stage2:lib:ghc and remaining targets with patched settings
-
-test_stage1_ghc() {
-  echo "  Testing Stage1 GHC..."
-
-  local ghc_exe="${_SRC_DIR}/_build/stage1/bin/ghc.exe"
-
-  if [[ -f "${ghc_exe}" ]]; then
-    "${ghc_exe}" --version 2>&1 || {
-      echo "WARNING: ghc.exe failed with exit code $?"
-      echo "Build may fail at stage2:lib:ghc configuration"
-    }
-  else
-    echo "WARNING: ghc.exe not found at ${ghc_exe}"
-  fi
-}
+# NOTE: Legacy wrapper functions removed - now calling patch_windows_settings() directly:
+# - patch_bootstrap_settings() → patch_windows_settings ... --bootstrap --debug
+# - patch_stage0_settings_include_paths() → patch_windows_settings ... --include-paths
+# - patch_stage2_settings() → patch_windows_settings ... --link-flags
+# - test_stage1_ghc() → removed (was dead code, never called)
 
 rebuild_touchy_with_correct_linker_flags() {
   echo "  Rebuilding touchy.exe with correct linker flags..."
