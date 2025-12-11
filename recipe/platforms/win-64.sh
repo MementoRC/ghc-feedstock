@@ -43,38 +43,15 @@ platform_setup_environment() {
   export GHC="${_BUILD_PREFIX}/ghc-bootstrap/bin/ghc.exe"
   export LIBRARY_PATH="${_BUILD_PREFIX}/Library/lib${LIBRARY_PATH:+:}${LIBRARY_PATH:-}"
 
-  # Use GCC toolchain to match bootstrap GHC compiler
-  export CC="x86_64-w64-mingw32-gcc"
-  export CXX="x86_64-w64-mingw32-g++"
-  export CPP="x86_64-w64-mingw32-cpp"
-
-  echo "  GCC toolchain:"
-  echo "    CC=${CC}"
-  echo "    CXX=${CXX}"
-  echo "    CPP=${CPP}"
-
-  # Define toolchain variables early for bootstrap settings patching
-  export LD="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-ld.exe"
-  export AR="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-ar.exe"
-  export RANLIB="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-ranlib.exe"
-
   # Expand conda variables in flags
   expand_conda_variables
 
   # Remove problematic flags
   remove_problematic_flags
 
-  # Add Windows-specific include and library paths
-  # Add include paths for system headers like ffi.h in two stages:
-  # 1. Basic path in patch_bootstrap_settings() before configure
-  # 2. Complete paths in patch_stage0_settings_include_paths() after stage1:exe:ghc-bin
   export CFLAGS="-I${_BUILD_PREFIX}/Library/include ${CFLAGS:-}"
   export CXXFLAGS="-I${_BUILD_PREFIX}/Library/include ${CXXFLAGS:-}"
   export LDFLAGS="-L${_BUILD_PREFIX}/Library/lib -L${_BUILD_PREFIX}/Library/lib/gcc/x86_64-w64-mingw32/15.2.0 ${LDFLAGS:-}"
-
-  echo "  Flags configured:"
-  echo "    CFLAGS=${CFLAGS:0:100}..."
-  echo "    LDFLAGS=${LDFLAGS:0:100}..."
 
   # Fix windres.bat (ghc-bootstrap bug)
   if [[ -f "${_BUILD_PREFIX}/ghc-bootstrap/bin/windres.bat" ]]; then
@@ -84,9 +61,6 @@ platform_setup_environment() {
   # Create chkstk_ms stub library
   create_chkstk_stub
 
-  # Create mingw32 compatibility stubs (timezone symbols for UCRT)
-  create_mingw32_stubs
-
   # Install windres wrapper
   if [[ -f "${_RECIPE_DIR}/support/windres.bat" ]]; then
     cp "${_RECIPE_DIR}/support/windres.bat" "${_BUILD_PREFIX}/Library/bin/"
@@ -95,11 +69,6 @@ platform_setup_environment() {
 
   # Patch bootstrap settings
   patch_bootstrap_settings
-
-  # CRITICAL: Patch bootstrap's time package to link against mingw32_stubs
-  # The time library references __imp__timezone and __imp__tzname which are
-  # MSVCRT symbols not available in UCRT. Our stubs provide these.
-  patch_bootstrap_time_package
 
   # Set up temp variables
   export TMP="$(cygpath -w "${TEMP}")"
@@ -187,36 +156,45 @@ platform_pre_configure_ghc() {
   export UseSystemFfi=YES
   export ac_cv_use_system_libffi=yes
 
+  export ac_cv_prog_LD="${_BUILD_PREFIX_}"/Library/bin/"${LD}"
+  
+  export ac_cv_path_CC="${_BUILD_PREFIX_}"/Library/bin/"${CC}"
+  export ac_cv_path_CXX="${_BUILD_PREFIX_}"/Library/bin/"${CXX}"
+  export ac_cv_path_AR="${_BUILD_PREFIX_}"/Library/bin/"${AR}"
+  export ac_cv_path_LD="${_BUILD_PREFIX_}"/Library/bin/"${LD}"
+  export ac_cv_path_NM="${_BUILD_PREFIX_}"/Library/bin/"${NM}"
+  export ac_cv_path_RANLIB="${_BUILD_PREFIX_}"/Library/bin/"${RANLIB}"
+  
   export CXX_STD_LIB_LIBS="stdc++"
 
   # CRITICAL: Override ALL conda toolchain variables that have %BUILD_PREFIX% placeholders
   # Configure reads these from environment, NOT from bootstrap GHC settings
-  export ADDR2LINE="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-addr2line.exe"
-  export AR="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-ar.exe"
-  export AS="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-as.exe"
-  export CXXFILT="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-c++filt.exe"
-  export ELFEDIT="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-elfedit.exe"
-  export GPROF="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-gprof.exe"
-  export LD="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-ld.exe"
-  export NM="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-nm.exe"
-  export OBJCOPY="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-objcopy.exe"
-  export OBJDUMP="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-objdump.exe"
-  export RANLIB="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-ranlib.exe"
-  export READELF="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-readelf.exe"
-  export SIZE="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-size.exe"
-  export STRINGS="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-strings.exe"
-  export STRIP="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-strip.exe"
+  # export ADDR2LINE="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-addr2line.exe"
+  # export AR="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-ar.exe"
+  # export AS="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-as.exe"
+  # export CXXFILT="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-c++filt.exe"
+  # export ELFEDIT="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-elfedit.exe"
+  # export GPROF="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-gprof.exe"
+  # export LD="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-ld.exe"
+  # export NM="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-nm.exe"
+  # export OBJCOPY="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-objcopy.exe"
+  # export OBJDUMP="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-objdump.exe"
+  # export RANLIB="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-ranlib.exe"
+  # export READELF="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-readelf.exe"
+  # export SIZE="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-size.exe"
+  # export STRINGS="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-strings.exe"
+  # export STRIP="${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-strip.exe"
 
   # CRITICAL: Tell autoconf which compiler to use (prevents "checking for gcc... no")
-  export ac_cv_prog_CC="${CC}"
-  export ac_cv_prog_CXX="${CXX}"
-  export ac_cv_prog_CPP="${CPP}"
-  export ac_cv_prog_AR="${AR}"
-  export ac_cv_prog_LD="${LD}"
-  export ac_cv_prog_NM="${NM}"
-  export ac_cv_prog_RANLIB="${RANLIB}"
-  export ac_cv_prog_STRIP="${STRIP}"
-  export ac_cv_prog_OBJDUMP="${OBJDUMP}"
+  # export ac_cv_prog_CC="${CC}"
+  # export ac_cv_prog_CXX="${CXX}"
+  # export ac_cv_prog_CPP="${CPP}"
+  # export ac_cv_prog_AR="${AR}"
+  # export ac_cv_prog_LD="${LD}"
+  # export ac_cv_prog_NM="${NM}"
+  # export ac_cv_prog_RANLIB="${RANLIB}"
+  # export ac_cv_prog_STRIP="${STRIP}"
+  # export ac_cv_prog_OBJDUMP="${OBJDUMP}"
 
   echo "  Toolchain environment variables overridden with actual paths"
 
@@ -275,10 +253,23 @@ patch_stage0_settings_include_paths() {
     return 1
   fi
 
-  # Add include paths for system headers (ffi.h, gmp.h, etc.)
-  # CRITICAL: Use _PREFIX (Unix paths) NOT PREFIX (Windows paths)
-  # CRITICAL: Include both _PREFIX and _BUILD_PREFIX
-  # Use correct regex with closing quote capture group
+  perl -pi -e "s#(C compiler command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${CC}#" "${settings_file}"
+  perl -pi -e "s#(Haskell CPP command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${CC}#" "${settings_file}"
+  perl -pi -e "s#(C\+\+ compiler command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${CXX}#" "${settings_file}"
+  perl -pi -e "s#(ld command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${LD}#" "${settings_file}"
+  perl -pi -e "s#(Merge objects command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${LD}#" "${settings_file}"
+  perl -pi -e "s#(ar command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${AR}#" "${settings_file}"
+  perl -pi -e "s#(nm command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${NM}#" "${settings_file}"
+  perl -pi -e "s#(ranlib command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${RANLIB}#" "${settings_file}"
+  perl -pi -e "s#(objdump command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${OBJDUMP}#" "${settings_file}"
+  perl -pi -e "s#(strip command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${STRIP}#" "${settings_file}"
+  perl -pi -e "s#(dllwrap command\", \")[^\"]*#\$1false#" "${settings_file}"
+
+  # Setup windres wrapper (using _BUILD_PREFIX, not conda variable)
+  if [[ -f "${_BUILD_PREFIX}/Library/bin/windres.bat" ]]; then
+    perl -pi -e "s#(windres command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/windres.bat#" "${settings_file}"
+  fi
+
   perl -pi -e "s#(C compiler flags\", \")([^\"]*)(\")#\$1\$2 -I${_PREFIX}/Library/include -I${_BUILD_PREFIX}/Library/include\$3#" "${settings_file}"
   perl -pi -e "s#(C\+\+ compiler flags\", \")([^\"]*)(\")#\$1\$2 -I${_PREFIX}/Library/include -I${_BUILD_PREFIX}/Library/include\$3#" "${settings_file}"
 
@@ -347,6 +338,21 @@ patch_stage2_settings() {
   # CRITICAL: Use -Xlinker prefix because flags go through GHC to linker
   local LINK_FLAGS="-Wl,--subsystem,console -Wl,--enable-auto-import -Wl,--image-base=0x140000000 -Wl,--dynamicbase -Wl,--high-entropy-va -Xlinker -L${CHKSTK_DIR} -Xlinker -L${MINGW_SYSROOT}"
   LINK_FLAGS="${LINK_FLAGS} -Xlinker -lmoldname -Xlinker -lmingwex -Xlinker -lmingw32 -Xlinker -lchkstk_ms -Xlinker -lgcc -Xlinker -lucrt -Xlinker -lkernel32 -Xlinker -ladvapi32"
+
+  perl -pi -e "s#(C compiler command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${CC}#" "${settings_file}"
+  perl -pi -e "s#(Haskell CPP command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${CC}#" "${settings_file}"
+  perl -pi -e "s#(C\+\+ compiler command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${CXX}#" "${settings_file}"
+  perl -pi -e "s#(ld command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${LD}#" "${settings_file}"
+  perl -pi -e "s#(Merge objects command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${LD}#" "${settings_file}"
+  perl -pi -e "s#(ar command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${AR}#" "${settings_file}"
+  perl -pi -e "s#(nm command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${NM}#" "${settings_file}"
+  perl -pi -e "s#(ranlib command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${RANLIB}#" "${settings_file}"
+  perl -pi -e "s#(objdump command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${OBJDUMP}#" "${settings_file}"
+  perl -pi -e "s#(strip command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${STRIP}#" "${settings_file}"
+  perl -pi -e "s#(dllwrap command\", \")[^\"]*#\$1false#" "${settings_file}"
+  if [[ -f "${_BUILD_PREFIX}/Library/bin/windres.bat" ]]; then
+    perl -pi -e "s#(windres command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/windres.bat#" "${settings_file}"
+  fi
 
   perl -pi -e "s#(C compiler link flags\", \")#\$1${LINK_FLAGS} #" "${settings_file}"
   perl -pi -e "s#(ld flags\", \")#\$1--subsystem,console --enable-auto-import --image-base=0x140000000 --dynamicbase --high-entropy-va -L${CHKSTK_DIR} -L${MINGW_SYSROOT} -lmoldname -lmingwex -lmingw32 -lchkstk_ms -lgcc -lucrt -lkernel32 -ladvapi32 #" "${settings_file}"
@@ -534,69 +540,6 @@ EOF
   echo "  ✓ Created ${CHKSTK_LIB}"
 }
 
-create_mingw32_stubs() {
-  echo "  Creating MinGW32 compatibility stub library (timezone symbols)..."
-
-  local STUBS_OBJ="${_SRC_DIR}/mingw32_stubs.o"
-  local STUBS_LIB="${_BUILD_PREFIX}/Library/lib/libmingw32_stubs.a"
-
-  # Compile stubs from recipe support directory
-  if [[ -f "${_RECIPE_DIR}/support/mingw32_stubs.c" ]]; then
-    ${CC} -c "${_RECIPE_DIR}/support/mingw32_stubs.c" -o "${STUBS_OBJ}"
-  else
-    echo "ERROR: mingw32_stubs.c not found at ${_RECIPE_DIR}/support/mingw32_stubs.c"
-    exit 1
-  fi
-
-  ${AR} rcs "${STUBS_LIB}" "${STUBS_OBJ}"
-
-  if [[ ! -f "${STUBS_LIB}" ]]; then
-    echo "ERROR: Failed to create mingw32_stubs library"
-    exit 1
-  fi
-
-  echo "  ✓ Created ${STUBS_LIB}"
-}
-
-patch_bootstrap_time_package() {
-  echo "  Patching bootstrap GHC's time package to use mingw32_stubs..."
-
-  local pkg_db="${_BUILD_PREFIX}/ghc-bootstrap/lib/package.conf.d"
-  local time_conf
-  time_conf=$(find "${pkg_db}" -name "time-*.conf" 2>/dev/null | head -1)
-
-  if [[ -z "${time_conf}" || ! -f "${time_conf}" ]]; then
-    echo "WARNING: Bootstrap time package conf not found in ${pkg_db}"
-    return 1
-  fi
-
-  echo "  Found time package: ${time_conf}"
-
-  # Use Windows-format path for the stubs library directory
-  local STUBS_LIB_DIR="${_BUILD_PREFIX}/Library/lib"
-
-  # Add extra-lib-dirs if not present
-  if ! grep -q "extra-lib-dirs:" "${time_conf}"; then
-    echo "extra-lib-dirs: ${STUBS_LIB_DIR}" >> "${time_conf}"
-  else
-    # Append to existing extra-lib-dirs
-    perl -pi -e "s#(extra-lib-dirs:.*)#\$1 ${STUBS_LIB_DIR}#" "${time_conf}"
-  fi
-
-  # Add extra-libraries if not present
-  if ! grep -q "extra-libraries:" "${time_conf}"; then
-    echo "extra-libraries: mingw32_stubs" >> "${time_conf}"
-  else
-    # Append to existing extra-libraries
-    perl -pi -e "s#(extra-libraries:.*)#\$1 mingw32_stubs#" "${time_conf}"
-  fi
-
-  echo "  Recaching bootstrap package database..."
-  "${_BUILD_PREFIX}/ghc-bootstrap/bin/ghc-pkg" recache
-
-  echo "  ✓ Bootstrap time package patched"
-}
-
 patch_bootstrap_settings() {
   echo "  Patching bootstrap GHC settings..."
 
@@ -607,33 +550,23 @@ patch_bootstrap_settings() {
     return 1
   fi
 
-  # Build Windows-format paths for tools that need absolute paths
-  # Use sed to convert /c/ to C:/ since _BUILD_PREFIX_ may not be available
-  local LD_WIN=$(echo "${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-ld.exe" | sed 's#^/c/#C:/#')
-  local AR_WIN=$(echo "${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-ar.exe" | sed 's#^/c/#C:/#')
-  local RANLIB_WIN=$(echo "${_BUILD_PREFIX}/Library/bin/x86_64-w64-mingw32-ranlib.exe" | sed 's#^/c/#C:/#')
-
-  echo "  Patching with paths:"
-  echo "    CC=${CC} (PATH-based)"
-  echo "    LD_WIN=${LD_WIN}"
-  echo "    AR_WIN=${AR_WIN}"
-  echo "    RANLIB_WIN=${RANLIB_WIN}"
-
   # Patch settings file - use PATH-based names for compilers (simpler, works reliably)
-  perl -pi -e "s#(C compiler command\", \")[^\"]*#\$1${CC}#" "${settings_file}"
-  perl -pi -e "s#(Haskell CPP command\", \")[^\"]*#\$1${CC}#" "${settings_file}"
-  perl -pi -e "s#(C\+\+ compiler command\", \")[^\"]*#\$1${CXX}#" "${settings_file}"
-  # CRITICAL: Fix "ld command" field that points to non-existent $tooldir/mingw/bin/ld.exe
-  perl -pi -e "s#(ld command\", \")[^\"]*#\$1${LD_WIN}#" "${settings_file}"
-  perl -pi -e "s#(Merge objects command\", \")[^\"]*#\$1${LD_WIN}#" "${settings_file}"
-  perl -pi -e "s#(ar command\", \")[^\"]*#\$1${AR_WIN}#" "${settings_file}"
-  perl -pi -e "s#(ranlib command\", \")[^\"]*#\$1${RANLIB_WIN}#" "${settings_file}"
+  perl -pi -e "s#(C compiler command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${CC}#" "${settings_file}"
+  perl -pi -e "s#(Haskell CPP command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${CC}#" "${settings_file}"
+  perl -pi -e "s#(C\+\+ compiler command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${CXX}#" "${settings_file}"
+  perl -pi -e "s#(ld command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${LD}#" "${settings_file}"
+  perl -pi -e "s#(Merge objects command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${LD}#" "${settings_file}"
+  perl -pi -e "s#(ar command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${AR}#" "${settings_file}"
+  perl -pi -e "s#(nm command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${NM}#" "${settings_file}"
+  perl -pi -e "s#(ranlib command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${RANLIB}#" "${settings_file}"
+  perl -pi -e "s#(objdump command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${OBJDUMP}#" "${settings_file}"
+  perl -pi -e "s#(strip command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/${STRIP}#" "${settings_file}"
+  perl -pi -e "s#(windres command\", \")[^\"]*#\$1${_BUILD_PREFIX_}/Library/bin/windres.bat#" "${settings_file}"
   perl -pi -e "s#(dllwrap command\", \")[^\"]*#\$1false#" "${settings_file}"
 
   # Setup windres wrapper
   if [[ -f "${_BUILD_PREFIX}/Library/bin/windres.bat" ]]; then
-    local WINDRES_WIN=$(echo "${_BUILD_PREFIX}/Library/bin/windres.bat" | sed 's#^/c/#C:/#')
-    perl -pi -e "s#(windres command\", \")[^\"]*#\$1${WINDRES_WIN}#" "${settings_file}"
+    perl -pi -e "s#(windres command\", \")[^\"]*#\$1"${_BUILD_PREFIX_}"/Library/bin/windres.bat#" "${settings_file}"
   fi
 
   # Update include paths
