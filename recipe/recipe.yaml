@@ -156,9 +156,10 @@ tests:
           # Verify GHC can resolve and invoke windres via $topdir path in settings
           - ghc --print-libdir
           - ghc --info | findstr windres
-          # Test that GHC can actually invoke windres (compiles empty resource file)
+          # Test that GHC can actually invoke windres (link Haskell + resource file)
+          - echo main = return () > test_res.hs
           - echo // empty resource > test.rc
-          - ghc -v -c test.rc -o test_res.o
+          - ghc -v test_res.hs test.rc -o test_res.exe
 
   - script:
       - ghc --version
