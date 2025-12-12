@@ -210,16 +210,12 @@ default_configure_ghc() {
   )
 
   # Add standard library paths (--with-gmp, --with-ffi, etc.)
-  # Skip for Windows - it uses platform_add_configure_args with different paths
+  # build_configure_args handles Windows vs Unix path differences automatically
   echo "  DEBUG: target_platform=${target_platform:-UNSET}"
-  if [[ "${target_platform:-}" != "win-64" ]]; then
-    echo "  DEBUG: Calling build_configure_args..."
-    build_configure_args configure_args
-  else
-    echo "  DEBUG: Skipping build_configure_args for Windows"
-  fi
+  echo "  DEBUG: Calling build_configure_args..."
+  build_configure_args configure_args
 
-  # Add platform-specific args if provided (legacy callback pattern)
+  # Add platform-specific args if provided (for any extra platform-specific flags)
   if type -t platform_add_configure_args >/dev/null 2>&1; then
     echo "  DEBUG: Calling platform_add_configure_args..."
     platform_add_configure_args configure_args

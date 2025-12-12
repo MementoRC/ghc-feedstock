@@ -71,15 +71,27 @@ build_configure_args() {
   local -n _result="$1"
   local extra_ldflags="${2:-}"
 
+  # Determine include/lib paths based on platform
+  # Windows: ${_PREFIX}/Library/{include,lib} (conda Windows layout)
+  # Unix:    ${PREFIX}/{include,lib}
+  local inc_dir lib_dir
+  if [[ "${target_platform:-}" == "win-64" ]]; then
+    inc_dir="${_PREFIX}/Library/include"
+    lib_dir="${_PREFIX}/Library/lib"
+  else
+    inc_dir="${PREFIX}/include"
+    lib_dir="${PREFIX}/lib"
+  fi
+
   _result+=(--with-system-libffi=yes)
-  _result+=("--with-curses-includes=${PREFIX}/include")
-  _result+=("--with-curses-libraries=${PREFIX}/lib")
-  _result+=("--with-ffi-includes=${PREFIX}/include")
-  _result+=("--with-ffi-libraries=${PREFIX}/lib")
-  _result+=("--with-gmp-includes=${PREFIX}/include")
-  _result+=("--with-gmp-libraries=${PREFIX}/lib")
-  _result+=("--with-iconv-includes=${PREFIX}/include")
-  _result+=("--with-iconv-libraries=${PREFIX}/lib")
+  _result+=("--with-curses-includes=${inc_dir}")
+  _result+=("--with-curses-libraries=${lib_dir}")
+  _result+=("--with-ffi-includes=${inc_dir}")
+  _result+=("--with-ffi-libraries=${lib_dir}")
+  _result+=("--with-gmp-includes=${inc_dir}")
+  _result+=("--with-gmp-libraries=${lib_dir}")
+  _result+=("--with-iconv-includes=${inc_dir}")
+  _result+=("--with-iconv-libraries=${lib_dir}")
 
   # Platform-specific additions
   if [[ "${target_platform:-}" == linux-* ]]; then
