@@ -599,12 +599,37 @@ post_install_cleanup() {
   local settings_file=$(find "${_PREFIX}"/lib/ -name settings | head -1)
   if [[ -f "${settings_file}" ]]; then
     echo "  Updating installed settings file..."
+    echo "  Settings file: ${settings_file}"
 
-    # Fix: Change \$2 to $2 for proper backreference
-    perl -pi -e 's#((?:C compiler|C\+\+ compiler|Haskell CPP|ld|Merge objects|ar|ranlib) command",\s*")[^"]*-(gcc|g\+\+|ld|ar|ranlib)(?:.exe)?#$1x86_64-w64-mingw32-$2.exe#' "${settings_file}"
-    perl -pi -e 's#(windres command",\s*")[^"]*#$1\$topdir/../../bin/ghc_windres.bat#' "${settings_file}"
-    perl -pi -e 's#(compiler link flags",\s*"[^"]*)#$1 -Wl,-L\$topdir/../../lib#' "${settings_file}"
-    perl -pi -e 's#(ld flags",\s*"[^"]*)#$1 -L\$topdir/../../lib#' "${settings_file}"
+    # Show current C compiler setting for debugging
+    echo "  Current C compiler setting:"
+    grep "C compiler command" "${settings_file}" || true
+
+    # Update compiler/tool commands to use conda-forge toolchain names
+    # conda-forge uses -cc/-c++ but the actual binaries are -gcc/-g++
+    # Pattern: Replace any path ending with x86_64-w64-mingw32-{tool} with just the tool name
+    # The tool will be found in PATH at runtime via conda activation
+    perl -pi -e 's#("C compiler command",\s*")[^"]*#$1x86_64-w64-mingw32-gcc.exe#' "${settings_file}"
+    perl -pi -e 's#("C\+\+ compiler command",\s*")[^"]*#$1x86_64-w64-mingw32-g++.exe#' "${settings_file}"
+    perl -pi -e 's#("Haskell CPP command",\s*")[^"]*#$1x86_64-w64-mingw32-gcc.exe#' "${settings_file}"
+    perl -pi -e 's#("ld command",\s*")[^"]*#$1x86_64-w64-mingw32-ld.exe#' "${settings_file}"
+    perl -pi -e 's#("Merge objects command",\s*")[^"]*#$1x86_64-w64-mingw32-ld.exe#' "${settings_file}"
+    perl -pi -e 's#("ar command",\s*")[^"]*#$1x86_64-w64-mingw32-ar.exe#' "${settings_file}"
+    perl -pi -e 's#("ranlib command",\s*")[^"]*#$1x86_64-w64-mingw32-ranlib.exe#' "${settings_file}"
+    perl -pi -e 's#("nm command",\s*")[^"]*#$1x86_64-w64-mingw32-nm.exe#' "${settings_file}"
+    perl -pi -e 's#("objdump command",\s*")[^"]*#$1x86_64-w64-mingw32-objdump.exe#' "${settings_file}"
+    perl -pi -e 's#("strip command",\s*")[^"]*#$1x86_64-w64-mingw32-strip.exe#' "${settings_file}"
+
+    # windres uses our custom wrapper
+    perl -pi -e 's#("windres command",\s*")[^"]*#$1\$topdir/../../bin/ghc_windres.bat#' "${settings_file}"
+
+    # Add library paths for runtime linking
+    perl -pi -e 's#("C compiler link flags",\s*"[^"]*)#$1 -Wl,-L\$topdir/../../lib#' "${settings_file}"
+    perl -pi -e 's#("ld flags",\s*"[^"]*)#$1 -L\$topdir/../../lib#' "${settings_file}"
+
+    # Show updated C compiler setting for verification
+    echo "  Updated C compiler setting:"
+    grep "C compiler command" "${settings_file}" || true
 
     echo "  ✓ Settings file updated"
   else
