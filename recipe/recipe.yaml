@@ -1,6 +1,6 @@
 context:
-  version: "9.6.7"
-  bootstrap_version: "9.2.8"
+  version: "9.10.3"
+  bootstrap_version: "9.6.7"
 
 package:
   name: ghc
@@ -8,27 +8,39 @@ package:
 
 source:
   - url: https://downloads.haskell.org/~ghc/${{ version }}/ghc-${{ version }}-src.tar.xz
-    sha256: d053bf6ce1d588a75cfe8c9316269486e9d8fb89dcdf6fd92836fa2e3df61305
+    sha256: d266864b9e0b7b741abe8c9d6a790d7c01c21cf43a1419839119255878ebc59a
     patches:
       - if: aarch64 or ppc64le or arm64
-        then: patches/skip-bindist-recache-crosscompile.patch
+        then:
+          - patches/skip-bindist-recache-crosscompile.patch
+      - if: ppc64le
+        then:
+          - patches/fix-stgcrun-ppc64le-abi-v2.patch
+          - patches/fix-stgrun-visibility-ppc64le.patch
+          - patches/fix-stgrun-header-visibility-ppc64le.patch
+      - if: arm64
+        then:
+          - patches/fix-regparm-arm64.patch
+          - patches/fix-smp-spinlock-arm64.patch
+          - patches/fix-stgcrun-x86-arm64.patch
+      - if: osx
+        then:
+          - patches/remove-dangerous-macos-linker-flags.patch
       - if: not unix
         then:
           - patches/skip-mingw-copy-conda.patch
           - patches/force-system-gmp-windows.patch
-          - patches/add-ffi-include-dir-substitution.patch
           - patches/fix-windows-thriomanager-include.patch
           - patches/add-threadlabels-include-consolehandler.patch
           - patches/fix-windows-utimbuf-type.patch
           - patches/disable-split-sections-windows.patch
           - patches/skip-mingw-detection-error.patch
           - patches/fix-windows-reportmemorymap-format.patch
-          - patches/fix-windows-pei386-format.patch
           - patches/fix-windows-mmap-format.patch
-          - patches/fix-hp2ps-utilities-stdlib.patch
-      - if: osx and arm64
-        then:
-          - patches/patch-osname-macos.patch
+          - patches/fix-windows-pei386-format.patch
+          - patches/fix-js-cpp-test-windows-line-endings.patch
+          - patches/fix-process-signal-constants-windows.patch
+          - patches/add-ffi-include-to-rts-cdep-scanner.patch
 
 build:
   number: 0
@@ -41,6 +53,16 @@ requirements:
     - ${{ compiler('c') }}
     - ${{ compiler('cxx') }}
     - ${{ stdlib('c') }}
+    
+    - ${{ "m2-" if not unix }}autoconf
+    - ${{ "m2-" if not unix }}automake${{ "-wrapper" if not unix }}
+    - ${{ "m2-" if not unix }}bash >=5.2
+    - ${{ "m2-" if not unix }}file
+    - ${{ "m2-" if not unix }}findutils
+    - ${{ "m2-" if not unix }}m4
+    - ${{ "m2-" if not unix }}make
+    - ${{ "m2-" if not unix }}tar
+    
     - binutils >=${{ binutils_version }}
     - cabal ==3.10.3.0
     - curl
@@ -49,31 +71,11 @@ requirements:
     - perl 5.32.*
     - pkg-config
     - python 3.10.*
-    - sphinx
 
-    - if: unix
+    - if: not unix
       then:
-        - autoconf
-        - automake
-        - bash >=5.2
-        - file
-        - findutils
-        - m4
-        - make
-        - sed
-      else:
         - libgcc-devel_win-64
-        - m2-autoconf
-        - m2-automake-wrapper
-        - m2-bash >=5.2
         - m2-coreutils
-        - m2-file
-        - m2-findutils
-        - m2-grep
-        - m2-m4
-        - m2-make
-        - m2-sed
-        - m2-tar
         - m2-which
 
     - if: build_platform != target_platform
@@ -89,12 +91,6 @@ requirements:
     - libffi
     - if: unix
       then: ncurses
-  # run:
-  #   - if: unix
-  #     then: ncurses
-  # ignore_run_exports:
-  #   from_package:
-  #     - ncurses
     
 tests:
   - package_contents:
@@ -259,6 +255,7 @@ about:
   license: BSD-3-Clause
   license_file:
     - LICENSE
+    - license_files/
   summary: Glorious Glasgow Haskell Compilation System
   description: |
     GHC is a state-of-the-art, open source, compiler and interactive environment 
